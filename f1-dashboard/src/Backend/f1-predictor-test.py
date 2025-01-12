@@ -2,10 +2,8 @@ import requests
 import pandas as pd
 import numpy as np
 import fastf1
-import os
 from datetime import datetime
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score, classification_report
 from xgboost import XGBClassifier
 from imblearn.over_sampling import SMOTE
@@ -19,9 +17,6 @@ class F1Predictor:
         fastf1.Cache.enable_cache('cache')  # Use 'cache' directory for caching
         self.base_url = "http://ergast.com/api/f1"
         self.current_year = datetime.now().year
-        self.api_key = 'c5d27272ec454d7b9f6234316241009'  # Set your API key as an environment variable
-        if not self.api_key:
-            print("Warning: WEATHER_API_KEY environment variable not set. Please set it to use weather features.")
 
         self.grand_prix_data = {
             # Grand Prix data with actual dates
@@ -55,7 +50,7 @@ class F1Predictor:
 
     def get_active_drivers(self):
         """
-        Retrieves the list of active drivers for the current season.
+        Retrieves the list of active drivers for the current season, including driver numbers and codes.
         """
         url = f"{self.base_url}/{self.current_year}/drivers.json?limit=100"
         response = requests.get(url)
@@ -64,9 +59,17 @@ class F1Predictor:
             drivers = data['MRData']['DriverTable']['Drivers']
             driver_list = []
             for driver in drivers:
+                driver_number = driver.get('permanentNumber')
+                if driver_number is not None:
+                    driver_number = int(driver_number)
+                else:
+                    driver_number = None
+                driver_code = driver.get('code')  # Get the driver's code (abbreviation)
                 driver_list.append({
                     'DriverId': driver['driverId'],
-                    'Driver': f"{driver['givenName']} {driver['familyName']}"
+                    'Driver': f"{driver['givenName']} {driver['familyName']}",
+                    'PermanentNumber': driver_number,
+                    'Abbreviation': driver_code  # Add the code to the DataFrame
                 })
             return pd.DataFrame(driver_list)
         else:
@@ -127,11 +130,11 @@ class F1Predictor:
 
     def get_historical_race_results(self, circuit_id=None):
         """
-        Retrieves historical race results for the past 3 years.
+        Retrieves historical race results for the past 5 years.
         """
         results = []
         # Collect data from the last 3 seasons
-        for year in range(self.current_year - 3, self.current_year):
+        for year in range(self.current_year - 5, self.current_year + 1):
             # Fetch all races in the season
             season_url = f"{self.base_url}/{year}.json"
             response = requests.get(season_url)
@@ -148,23 +151,26 @@ class F1Predictor:
                     response = requests.get(url)
                     if response.status_code == 200:
                         data = response.json()
-                        race_results = data['MRData']['RaceTable']['Races'][0]
-                        for result in race_results['Results']:
-                            driver = result['Driver']
-                            constructor = result['Constructor']
-                            results.append({
-                                'Year': int(year),
-                                'RaceName': race_results['raceName'],
-                                'CircuitId': race_results['Circuit']['circuitId'],
-                                'RaceDate': datetime.strptime(race_results['date'], '%Y-%m-%d'),  # Add this line
-                                'DriverId': driver['driverId'],
-                                'Driver': f"{driver['givenName']} {driver['familyName']}",
-                                'ConstructorId': constructor['constructorId'],
-                                'GridPosition': int(result['grid']) if result['grid'].isdigit() else None,
-                                'FinishPosition': int(result['position']) if result['position'].isdigit() else None,
-                                'Status': result['status'],
-                                'Points': float(result['points']),
-                            })
+                        if data['MRData']['RaceTable']['Races']:
+                            race_results = data['MRData']['RaceTable']['Races'][0]
+                            for result in race_results['Results']:
+                                driver = result['Driver']
+                                constructor = result['Constructor']
+                                results.append({
+                                    'Year': int(year),
+                                    'RaceName': race_results['raceName'],
+                                    'CircuitId': race_results['Circuit']['circuitId'],
+                                    'RaceDate': datetime.strptime(race_results['date'], '%Y-%m-%d'),
+                                    'DriverId': driver['driverId'],
+                                    'Driver': f"{driver['givenName']} {driver['familyName']}",
+                                    'ConstructorId': constructor['constructorId'],
+                                    'GridPosition': int(result['grid']) if result['grid'].isdigit() else None,
+                                    'FinishPosition': int(result['position']) if result['position'].isdigit() else None,
+                                    'Status': result['status'],
+                                    'Points': float(result['points']),
+                                })
+                        else:
+                            print(f"No race results found for round {round_number} in {year}.")
                     else:
                         print(f"Error fetching results for round {round_number} in {year}: {response.status_code}")
             else:
@@ -190,7 +196,7 @@ class F1Predictor:
             "italy": "monza",
             "singapore": "marina_bay",
             "japan": "suzuka",
-            "qatar": "losail",  # Note: circuitId is 'losail' for Qatar
+            "qatar": "losail",
             "united states": "cota",
             "mexico": "rodriguez",
             "brazil": "interlagos",
@@ -208,45 +214,6 @@ class F1Predictor:
             return standings.rename(columns={'Points': 'Points', 'Wins': 'Wins'})
         else:
             return pd.DataFrame()
-
-    def get_weather_forecast(self, city, country, date):
-        """
-        Fetches weather forecast for a specified location and date.
-        """
-        base_url = "http://api.weatherapi.com/v1/forecast.json"
-        days_from_now = (date - datetime.now().date()).days
-        if days_from_now < 0 or days_from_now > 14 or not self.api_key:
-            # Return default values
-            return {
-                "temperature": 25,
-                "description": "Unknown",
-                "is_wet": False,
-                "rain_chance": 0
-            }
-        params = {
-            "key": self.api_key,
-            "q": f"{city},{country}",
-            "dt": date.strftime("%Y-%m-%d"),
-        }
-        try:
-            response = requests.get(base_url, params=params)
-            response.raise_for_status()
-            data = response.json()
-            forecast_day = data['forecast']['forecastday'][0]
-            return {
-                "temperature": forecast_day['day']['avgtemp_c'],
-                "description": forecast_day['day']['condition']['text'],
-                "is_wet": forecast_day['day']['daily_will_it_rain'] == 1,
-                "rain_chance": float(forecast_day['day']['daily_chance_of_rain']) / 100.0
-            }
-        except requests.exceptions.RequestException as e:
-            print(f"Error fetching weather data: {e}")
-            return {
-                "temperature": 25,
-                "description": "Unknown",
-                "is_wet": False,
-                "rain_chance": 0
-            }
 
     def get_recent_race_results(self, num_races=5):
         """
@@ -268,61 +235,163 @@ class F1Predictor:
                     completed_races.append(race)
             # Get the last num_races races
             recent_races = completed_races[-num_races:]
+            if not recent_races:
+                print("No completed races found for the current year.")
+                return pd.DataFrame()
             for race in recent_races:
                 round_number = race['round']
                 url = f"{self.base_url}/{self.current_year}/{round_number}/results.json?limit=1000"
                 response = requests.get(url)
                 if response.status_code == 200:
                     data = response.json()
-                    race_results = data['MRData']['RaceTable']['Races'][0]
-                    for result in race_results['Results']:
-                        driver = result['Driver']
-                        constructor = result['Constructor']
-                        results.append({
-                            'RaceName': race_results['raceName'],
-                            'DriverId': driver['driverId'],
-                            'ConstructorId': constructor['constructorId'],
-                            'Points': float(result['points']),
-                            'FinishPosition': int(result['position']) if result['position'].isdigit() else None,
-                        })
+                    if data['MRData']['RaceTable']['Races']:
+                        race_results = data['MRData']['RaceTable']['Races'][0]
+                        for result in race_results['Results']:
+                            driver = result['Driver']
+                            constructor = result['Constructor']
+                            results.append({
+                                'RaceName': race_results['raceName'],
+                                'DriverId': driver['driverId'],
+                                'ConstructorId': constructor['constructorId'],
+                                'Points': float(result['points']),
+                                'FinishPosition': int(result['position']) if result['position'].isdigit() else None,
+                            })
+                    else:
+                        print(f"No race results found for round {round_number} of {self.current_year}.")
                 else:
                     print(f"Error fetching results for round {round_number}: {response.status_code}")
         else:
             print(f"Error fetching race schedule: {response.status_code}")
         return pd.DataFrame(results)
 
-    def get_qualifying_results(self, grand_prix_name, year):
+    def get_round_number(self, grand_prix_name, year):
         """
-        Retrieves qualifying results for a specific Grand Prix.
+        Retrieves the round number for a specific Grand Prix in a given year.
         """
-        circuit_id = self.get_circuit_id(grand_prix_name)
-        url = f"{self.base_url}/{year}/circuits/{circuit_id}/qualifying.json?limit=1000"
-        response = requests.get(url)
+        schedule_url = f"{self.base_url}/{year}.json"
+        response = requests.get(schedule_url)
         if response.status_code == 200:
             data = response.json()
             races = data['MRData']['RaceTable']['Races']
-            if races:
-                qualifying_results = races[0]['QualifyingResults']
-                results = []
-                for result in qualifying_results:
-                    driver = result['Driver']
-                    results.append({
-                        'DriverId': driver['driverId'],
-                        'QualifyingPosition': int(result['position'])
-                    })
-                return pd.DataFrame(results)
-            else:
-                # No qualifying data available
-                return pd.DataFrame()
+            for race in races:
+                if race['raceName'].lower() == grand_prix_name.lower() + " grand prix" or race['raceName'].lower() == grand_prix_name.lower():
+                    return race['round']
+            print(f"Race {grand_prix_name} not found in {year} schedule.")
+            return None
         else:
-            print(f"Error fetching qualifying results: {response.status_code}")
+            print(f"Error fetching race schedule: {response.status_code}")
+            return None
+
+    def get_qualifying_results(self, grand_prix_name, year):
+        """
+        Retrieves qualifying results or simulates them using practice session data when qualifying results are not available.
+        """
+        # Enable cache
+        fastf1.Cache.enable_cache('cache')
+
+        # Get event details
+        try:
+            event = fastf1.get_event(year, grand_prix_name)
+        except Exception as e:
+            print(f"Error fetching event data for {grand_prix_name} {year}: {e}")
             return pd.DataFrame()
+
+        # Define the sessions to try in order
+        session_types = ['Q', 'SQ', 'SS', 'FP3', 'FP2', 'FP1']
+        session_loaded = False
+
+        for session_type in session_types:
+            try:
+                session = fastf1.get_session(year, grand_prix_name, session_type)
+                session.load()
+
+                # Check if session has results
+                if session.results is None or session.results.empty:
+                    print(f"No session results available for {grand_prix_name} {year} in session '{session_type}'. Trying next session type.")
+                    continue  # Try the next session type
+                else:
+                    session_loaded = True
+                    break  # Exit the loop if a session loads and has results
+            except Exception as e:
+                print(f"Error loading session '{session_type}' for {grand_prix_name} {year}: {e}")
+                continue  # Try the next session type
+
+        if not session_loaded:
+            print(f"No qualifying or practice data available for {grand_prix_name} {year}.")
+            return pd.DataFrame()
+
+        # Proceed to get the session results
+        if session_type in ['FP1', 'FP2', 'FP3']:
+            # Get all laps
+            laps = session.laps
+
+            # Remove laps with invalid lap times
+            laps = laps.dropna(subset=['LapTime'])
+
+            # Get the fastest lap for each driver
+            fastest_laps = laps.groupby('Driver').apply(lambda x: x.nsmallest(1, 'LapTime')).reset_index(drop=True)
+
+            # Select needed columns
+            lap_times = fastest_laps[['Driver', 'LapTime']]
+
+            # Sort drivers by their fastest lap times
+            lap_times = lap_times.sort_values(by='LapTime').reset_index(drop=True)
+
+            # Assign positions
+            lap_times['Position'] = lap_times.index + 1
+
+            # Map drivers to DriverId using 'Abbreviation'
+            if self.active_drivers.empty:
+                self.active_drivers = self.get_active_drivers()
+            
+            # Map 'Driver' to 'Abbreviation' in session.results
+            driver_map = session.results[['DriverNumber', 'Abbreviation', 'FullName']].drop_duplicates()
+            lap_times = lap_times.merge(driver_map, left_on='Driver', right_on='Abbreviation', how='left')
+
+            # Map Abbreviation to DriverId
+            abbr_to_driverid = self.active_drivers.set_index('Abbreviation')['DriverId'].to_dict()
+            lap_times['DriverId'] = lap_times['Abbreviation'].map(abbr_to_driverid)
+
+            # Prepare qualifying_results DataFrame
+            qualifying_results = lap_times[['DriverId', 'Abbreviation', 'Position']].copy()
+            qualifying_results.rename(columns={'Position': 'QualifyingPosition'}, inplace=True)
+        else:
+            # Use qualifying results as is
+            results = session.results
+
+            # Map drivers using abbreviations
+            if 'Abbreviation' in results.columns:
+                if self.active_drivers.empty:
+                    self.active_drivers = self.get_active_drivers()
+                # Ensure 'Abbreviation' is available in active_drivers
+                if 'Abbreviation' in self.active_drivers.columns:
+                    # Map Abbreviation to DriverId
+                    abbr_to_driverid = self.active_drivers.set_index('Abbreviation')['DriverId'].to_dict()
+                    results['DriverId'] = results['Abbreviation'].map(abbr_to_driverid)
+                else:
+                    print("'Abbreviation' column not found in active_drivers.")
+                    return pd.DataFrame()
+            else:
+                print("'Abbreviation' column not found in session results.")
+                return pd.DataFrame()
+
+            # Drop entries without DriverId mapping or missing Position
+            qualifying_results = results.dropna(subset=['DriverId', 'Position'])
+            qualifying_results = qualifying_results[['DriverId', 'Abbreviation', 'Position']].copy()
+            qualifying_results.rename(columns={'Position': 'QualifyingPosition'}, inplace=True)
+
+        # Drop entries without DriverId mapping
+        qualifying_results = qualifying_results.dropna(subset=['DriverId'])
+
+        # Convert 'QualifyingPosition' to int
+        qualifying_results['QualifyingPosition'] = qualifying_results['QualifyingPosition'].astype(int)
+
+        return qualifying_results
 
     def get_circuit_features(self, circuit_id):
         """
         Returns circuit-specific features.
         """
-        # For this example, we'll use a simple mapping. In a real scenario, you'd have more detailed data.
         circuit_features = {
             'bahrain': {'CircuitType': 'Permanent', 'CircuitLength': 5.412},
             'jeddah': {'CircuitType': 'Street', 'CircuitLength': 6.174},
@@ -348,13 +417,16 @@ class F1Predictor:
             'yas_marina': {'CircuitType': 'Permanent', 'CircuitLength': 5.554},
         }
         return circuit_features.get(circuit_id, {'CircuitType': 'Unknown', 'CircuitLength': 5.0})
-    
+
     def get_drivers_in_race(self, grand_prix_name, year):
         """
         Retrieves the list of drivers participating in a specific race.
         """
-        circuit_id = self.get_circuit_id(grand_prix_name)
-        url = f"{self.base_url}/{year}/circuits/{circuit_id}/drivers.json?limit=100"
+        round_number = self.get_round_number(grand_prix_name, year)
+        if not round_number:
+            return []
+
+        url = f"{self.base_url}/{year}/{round_number}/drivers.json?limit=100"
         response = requests.get(url)
         if response.status_code == 200:
             data = response.json()
@@ -364,7 +436,7 @@ class F1Predictor:
         else:
             print(f"Error fetching drivers for {grand_prix_name} {year}: {response.status_code}")
             return []
-        
+
     def get_historical_qualifying_results(self):
         """
         Retrieves historical qualifying results for the past 3 years.
@@ -387,40 +459,30 @@ class F1Predictor:
                     response = requests.get(url)
                     if response.status_code == 200:
                         data = response.json()
-                        race_qualifying = data['MRData']['RaceTable']['Races'][0]
-                        if 'QualifyingResults' in race_qualifying:
-                            for result in race_qualifying['QualifyingResults']:
-                                driver = result['Driver']
-                                qualifying_results.append({
-                                    'RaceDate': race_date,
-                                    'DriverId': driver['driverId'],
-                                    'QualifyingPosition': int(result['position'])
-                                })
+                        if data['MRData']['RaceTable']['Races']:
+                            race_qualifying = data['MRData']['RaceTable']['Races'][0]
+                            if 'QualifyingResults' in race_qualifying:
+                                for result in race_qualifying['QualifyingResults']:
+                                    driver = result['Driver']
+                                    qualifying_results.append({
+                                        'RaceDate': race_date,
+                                        'DriverId': driver['driverId'],
+                                        'QualifyingPosition': int(result['position'])
+                                    })
+                            else:
+                                print(f"No qualifying results found for round {round_number} in {year}.")
+                        else:
+                            print(f"No qualifying data found for round {round_number} in {year}.")
                     else:
                         print(f"Error fetching qualifying results for round {round_number} in {year}: {response.status_code}")
             else:
                 print(f"Error fetching race schedule for {year}: {response.status_code}")
         return pd.DataFrame(qualifying_results)
 
-    def predict_race_winner(self, grand_prix_name, race_year):
+    def prepare_historical_data(self):
         """
-        Predicts the winner of a specified Grand Prix.
+        Prepares historical data by computing cumulative and recent performance metrics.
         """
-        circuit_id = self.get_circuit_id(grand_prix_name)
-
-        # Get race details
-        race_info = self.grand_prix_data.get(grand_prix_name)
-        if not race_info:
-            print(f"No data available for {grand_prix_name}")
-            return None
-
-        # Get weather forecast
-        city = race_info['city']
-        country = race_info['country']
-        race_date_str = race_info['date']
-        race_date = datetime.strptime(race_date_str, "%Y-%m-%d").date()
-        weather = self.get_weather_forecast(city, country, race_date)
-
         # Get historical race results
         historical_results = self.get_historical_race_results()
 
@@ -445,19 +507,28 @@ class F1Predictor:
         historical_results['ConstructorCumulativeWins'] = historical_results.groupby('ConstructorId')['ConstructorWin'].cumsum() - historical_results['ConstructorWin']
 
         # Calculate recent performance (last 5 races) without data leakage
-        historical_results['AvgPointsLast5'] = historical_results.groupby('DriverId')['Points'].rolling(window=5, min_periods=1).mean().shift(1).reset_index(level=0, drop=True)
-        historical_results['AvgFinishPositionLast5'] = historical_results.groupby('DriverId')['FinishPosition'].rolling(window=5, min_periods=1).mean().shift(1).reset_index(level=0, drop=True)
-        historical_results['WinsLast5'] = historical_results.groupby('DriverId')['Win'].rolling(window=5, min_periods=1).sum().shift(1).reset_index(level=0, drop=True)
+        historical_results['AvgPointsLast5'] = historical_results.groupby('DriverId')['Points'] \
+            .rolling(window=5, min_periods=1).mean().shift(1).reset_index(level=0, drop=True).fillna(0)
+        historical_results['AvgFinishPositionLast5'] = historical_results.groupby('DriverId')['FinishPosition'] \
+            .rolling(window=5, min_periods=1).mean().shift(1).reset_index(level=0, drop=True).fillna(0)
+        historical_results['WinsLast5'] = historical_results.groupby('DriverId')['Win'] \
+            .rolling(window=5, min_periods=1).sum().shift(1).reset_index(level=0, drop=True).fillna(0)
 
         # Filter active drivers
         active_driver_ids = self.active_drivers['DriverId'].unique()
         historical_results = historical_results[historical_results['DriverId'].isin(active_driver_ids)]
 
+        return historical_results
+
+    def calculate_circuit_stats(self, circuit_id, historical_data):
+        """
+        Calculates circuit-specific statistics.
+        """
         # Driver's performance at the specific circuit
         circuit_results = self.get_historical_race_results(circuit_id=circuit_id)
         if circuit_results.empty:
             # If no data for circuit, use overall performance
-            circuit_results = historical_results.copy()
+            circuit_results = historical_data.copy()
 
         # Ensure 'Win' column exists in circuit_results
         if 'Win' not in circuit_results.columns:
@@ -474,66 +545,108 @@ class F1Predictor:
         # Calculate WinRateCircuit
         circuit_stats['WinRateCircuit'] = circuit_stats['WinsCircuit'] / circuit_stats['RacesAtCircuit']
 
-        # Merge data
-        data = self.driver_standings.merge(
-            circuit_stats[['DriverId', 'AvgFinishPositionCircuit', 'BestFinishPositionCircuit',
-                        'TotalPointsCircuit', 'WinsCircuit', 'WinRateCircuit']],
-            on='DriverId', how='left'
-        )
+        return circuit_stats
+
+    def prepare_features(self, historical_data, circuit_stats, grand_prix_name, race_year):
+        """
+        Prepares the feature set for modeling.
+        """
+        # Get qualifying results
+        qualifying_results = self.get_qualifying_results(grand_prix_name, race_year)
+
+        # Determine participating drivers
+        if not qualifying_results.empty:
+            # Use drivers from qualifying results as participating drivers
+            drivers_in_race = qualifying_results['DriverId'].unique()
+        else:
+            # If qualifying data is not available, use get_drivers_in_race to get drivers in the race
+            drivers_in_race = self.get_drivers_in_race(grand_prix_name, race_year)
+            if not drivers_in_race:
+                print(f"No entry list available for {grand_prix_name} {race_year}. Proceeding with all active drivers.")
+                drivers_in_race = self.active_drivers['DriverId'].unique()
+
+        # Filter driver standings to include only participating drivers
+        data = self.driver_standings[self.driver_standings['DriverId'].isin(drivers_in_race)].copy()
+
+        # Merge with constructor standings
         data = data.merge(
             self.constructor_standings[['ConstructorId', 'ConstructorName', 'ConstructorPoints', 'ConstructorWins']],
             on='ConstructorId', how='left'
         )
 
-        # Fetch drivers participating in the race
-        drivers_in_race = self.get_drivers_in_race(grand_prix_name, race_year)
+        # Merge with circuit stats
+        data = data.merge(
+            circuit_stats[['DriverId', 'AvgFinishPositionCircuit', 'BestFinishPositionCircuit',
+                        'TotalPointsCircuit', 'WinsCircuit', 'WinRateCircuit']],
+            on='DriverId', how='left'
+        )
 
-        if drivers_in_race:
-            # Filter 'data' to include only participating drivers
-            data = data[data['DriverId'].isin(drivers_in_race)]
-        else:
-            print(f"No entry list available for {grand_prix_name} {race_year}. Proceeding with all active drivers.")
-
-        # Add qualifying data if available
-        qualifying_results = self.get_qualifying_results(grand_prix_name, race_year)
+        # Add qualifying positions
         if not qualifying_results.empty:
             data = data.merge(qualifying_results[['DriverId', 'QualifyingPosition']], on='DriverId', how='left')
         else:
             # Use average grid positions if qualifying data not available
-            avg_grid_positions = historical_results.groupby('DriverId')['GridPosition'].mean().reset_index()
+            avg_grid_positions = historical_data.groupby('DriverId')['GridPosition'].mean().reset_index()
             avg_grid_positions.rename(columns={'GridPosition': 'QualifyingPosition'}, inplace=True)
             data = data.merge(avg_grid_positions, on='DriverId', how='left')
+
+        # Remove drivers with invalid qualifying positions (e.g., zero or missing)
+        data = data[data['QualifyingPosition'].notnull()]
+        data = data[data['QualifyingPosition'] > 0]
 
         # For historical data, include qualifying positions
         historical_qualifying = self.get_historical_qualifying_results()
 
         # Ensure 'RaceDate' is datetime in both DataFrames
-        historical_results['RaceDate'] = pd.to_datetime(historical_results['RaceDate'])
-        historical_qualifying['RaceDate'] = pd.to_datetime(historical_qualifying['RaceDate'])
-
+        historical_data['RaceDate'] = pd.to_datetime(historical_data['RaceDate'])
         if not historical_qualifying.empty:
-            historical_results = historical_results.merge(
+            historical_qualifying['RaceDate'] = pd.to_datetime(historical_qualifying['RaceDate'])
+
+            historical_data = historical_data.merge(
                 historical_qualifying[['RaceDate', 'DriverId', 'QualifyingPosition']],
                 on=['RaceDate', 'DriverId'], how='left'
             )
+            # Fill missing QualifyingPosition values with GridPosition
+            historical_data['QualifyingPosition'] = historical_data['QualifyingPosition'] \
+                .fillna(historical_data['GridPosition'])
         else:
             # Use 'GridPosition' as 'QualifyingPosition' if qualifying data not available
-            historical_results['QualifyingPosition'] = historical_results['GridPosition']
+            historical_data['QualifyingPosition'] = historical_data['GridPosition']
+
+        # Fill any remaining missing QualifyingPosition values with the mean
+        historical_data['QualifyingPosition'] = historical_data['QualifyingPosition'] \
+            .fillna(historical_data['QualifyingPosition'].mean())
+
+        # Calculate average qualifying position over recent 5 races
+        historical_data['AvgQualifyingPositionLast5'] = historical_data.groupby('DriverId')['QualifyingPosition'] \
+            .rolling(window=5, min_periods=1).mean().shift(1).reset_index(level=0, drop=True)
+        # Fill missing values with overall average qualifying position
+        overall_avg_qual_pos = historical_data['QualifyingPosition'].mean()
+        historical_data['AvgQualifyingPositionLast5'] = historical_data['AvgQualifyingPositionLast5'] \
+            .fillna(overall_avg_qual_pos)
 
         # Add recent performance metrics to 'data'
-        # Get the most recent race date in historical_results
-        most_recent_date = historical_results['RaceDate'].max()
-        recent_performance = historical_results[historical_results['RaceDate'] == most_recent_date][
-            ['DriverId', 'AvgPointsLast5', 'AvgFinishPositionLast5', 'WinsLast5']]
+        # Get the most recent race date in historical_data
+        most_recent_date = historical_data['RaceDate'].max()
+        recent_performance = historical_data[historical_data['RaceDate'] == most_recent_date][
+            ['DriverId', 'AvgPointsLast5', 'AvgFinishPositionLast5', 'WinsLast5', 'AvgQualifyingPositionLast5']]
         data = data.merge(recent_performance, on='DriverId', how='left')
 
-        # Add weather data
-        data['Temperature'] = weather['temperature']
-        data['IsWet'] = int(weather['is_wet'])
-        data['RainChance'] = weather['rain_chance']
+        # Fill missing values in recent performance metrics
+        recent_perf_cols = ['AvgPointsLast5', 'AvgFinishPositionLast5', 'WinsLast5', 'AvgQualifyingPositionLast5']
+        for col in recent_perf_cols:
+            data[col] = data[col].fillna(data[col].mean())
+
+        # Add 'QualifyingAvailable' feature
+        data['QualifyingAvailable'] = data['QualifyingPosition'].notnull().astype(int)
+        historical_data['QualifyingAvailable'] = historical_data['QualifyingPosition'].notnull().astype(int)
+
+        # Remove drivers with invalid qualifying positions (e.g., zero or missing)
+        data = data[data['QualifyingPosition'].notnull()]
+        data = data[data['QualifyingPosition'] > 0]
 
         # Add circuit features
-        circuit_features = self.get_circuit_features(circuit_id)
+        circuit_features = self.get_circuit_features(self.get_circuit_id(grand_prix_name))
         data['CircuitType'] = circuit_features['CircuitType']
         data['CircuitLength'] = circuit_features['CircuitLength']
 
@@ -558,19 +671,21 @@ class F1Predictor:
             'AvgPointsLast5',
             'AvgFinishPositionLast5',
             'WinsLast5',
+            'AvgQualifyingPositionLast5',
+            'QualifyingAvailable',
             'CircuitType',
             'CircuitLength',
-            'Temperature',
-            'IsWet',
-            'RainChance',
         ]
 
         features = data[feature_columns]
 
-        # Prepare historical data
-        historical_data = historical_results.copy()
+        # Add circuit features to 'historical_data'
+        historical_data['CircuitType'] = historical_data['CircuitId'].map(
+            lambda x: self.get_circuit_features(x)['CircuitType']).map({'Permanent': 0, 'Street': 1, 'Unknown': 2})
+        historical_data['CircuitLength'] = historical_data['CircuitId'].map(
+            lambda x: self.get_circuit_features(x)['CircuitLength'])
 
-        # Use cumulative Points and Wins
+        # Prepare historical data
         historical_data['Points'] = historical_data['CumulativePoints']
         historical_data['Wins'] = historical_data['CumulativeWins']
         historical_data['ConstructorPoints'] = historical_data['ConstructorCumulativePoints']
@@ -583,50 +698,25 @@ class F1Predictor:
             on='DriverId', how='left'
         )
 
-        # Ensure 'QualifyingPosition' is present in historical_data
-        if 'QualifyingPosition' not in historical_data.columns:
-            historical_data['QualifyingPosition'] = historical_data['GridPosition']
-
-        # Add weather data (use default values)
-        historical_data['Temperature'] = 25  # Default temperature
-        historical_data['IsWet'] = 0         # Assume dry conditions
-        historical_data['RainChance'] = 0.0  # No rain
-
-        # Add circuit features
-        historical_data['CircuitType'] = historical_data['CircuitId'].map(
-            lambda x: self.get_circuit_features(x)['CircuitType']).map({'Permanent': 0, 'Street': 1, 'Unknown': 2})
-        historical_data['CircuitLength'] = historical_data['CircuitId'].map(
-            lambda x: self.get_circuit_features(x)['CircuitLength'])
-
         # Fill missing values in recent performance metrics
-        historical_data[['AvgPointsLast5', 'AvgFinishPositionLast5', 'WinsLast5']] = historical_data[
-            ['AvgPointsLast5', 'AvgFinishPositionLast5', 'WinsLast5']].fillna(0)
+        historical_perf_cols = ['AvgPointsLast5', 'AvgFinishPositionLast5', 'WinsLast5', 'AvgQualifyingPositionLast5']
+        for col in historical_perf_cols:
+            historical_data[col] = historical_data[col].fillna(historical_data[col].mean())
 
         # Prepare features for historical data
         historical_features = historical_data[feature_columns].fillna(0)
 
-        # Target variable
-        target = historical_data['Win']
+        return features, data, historical_features, feature_columns
 
+    def train_model(self, historical_features, target, feature_columns):
+        """
+        Trains the predictive model using historical data.
+        """
         # Handle missing values and infinite values
         historical_features = historical_features.replace([np.inf, -np.inf], np.nan).fillna(0)
-        features = features.replace([np.inf, -np.inf], np.nan).fillna(0)
 
         # Apply log transformation to 'WinRateCircuit' to reduce skewness
         historical_features['WinRateCircuit'] = np.log1p(historical_features['WinRateCircuit'])
-        features['WinRateCircuit'] = np.log1p(features['WinRateCircuit'])
-
-        # Optionally, manually adjust feature magnitudes before scaling
-        # Scale down 'WinRateCircuit'
-        historical_features['WinRateCircuit'] *= 0.75
-        features['WinRateCircuit'] *= 0.75
-
-        # Scale up 'AvgPointsLast5', 'WinsLast5'
-        historical_features['AvgPointsLast5'] *= 2.0
-        features['AvgPointsLast5'] *= 2.0
-
-        historical_features['WinsLast5'] *= 1.5
-        features['WinsLast5'] *= 1.5
 
         # Scale features using RobustScaler
         scaler = RobustScaler()
@@ -634,8 +724,6 @@ class F1Predictor:
 
         # Scale training features
         historical_features_scaled = scaler.transform(historical_features)
-        # Scale prediction features
-        features_scaled = scaler.transform(features)
 
         # Handle class imbalance
         sm = SMOTE(random_state=42)
@@ -643,17 +731,22 @@ class F1Predictor:
 
         # Split data
         X_train, X_test, y_train, y_test = train_test_split(
-            X_res, y_res, test_size=0.2, random_state=42)
+            X_res, y_res, test_size=0.2, random_state=42
+        )
 
         # Adjust model parameters
         model = XGBClassifier(
             n_estimators=100,
-            max_depth=3,
-            min_child_weight=5,
+            max_depth=4,
+            min_child_weight=6,
+            learning_rate=0.05,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            reg_alpha=2.0,
+            reg_lambda=1.0,
             use_label_encoder=False,
             eval_metric='logloss',
             random_state=42,
-            reg_alpha=1.0,
         )
 
         model.fit(X_train, y_train)
@@ -671,25 +764,125 @@ class F1Predictor:
         print("Feature Importances:")
         print(feature_importances.sort_values(ascending=False))
 
+        return model, scaler
+
+    def assign_win_probabilities(self, model, scaler, features, data, ascending=False):
+        """
+        Uses the trained model to assign win probabilities to the drivers.
+        """
+        # Ensure 'WinRateCircuit' is transformed in prediction features
+        features = features.copy()
+        features['WinRateCircuit'] = np.log1p(features['WinRateCircuit'])
+        
+        # Apply scaling factors to prediction features
+        scaling_factors = {
+            'QualifyingPosition': 1.0,
+            'Wins': 1.0,
+            'Points': 1.0,
+            'ConstructorPoints': 1.0,
+            'ConstructorWins': 1.0,
+            'AvgFinishPositionCircuit': 3.0,
+            'BestFinishPositionCircuit': 3.0,
+            'TotalPointsCircuit': 3.0,
+            'WinsCircuit': 3.0,
+            'WinRateCircuit': 3.0,
+            'AvgPointsLast5': 3.0,
+            'AvgFinishPositionLast5': 3.0,
+            'WinsLast5': 3.0,
+            'AvgQualifyingPositionLast5': 1.0,
+            'QualifyingAvailable': 1.0,
+            'CircuitType': 1.0,
+            'CircuitLength': 1.0,
+        }
+        
+        for feature, factor in scaling_factors.items():
+            if feature in features.columns:
+                features[feature] *= factor
+        
+        # Handle missing values and infinite values
+        features = features.replace([np.inf, -np.inf], np.nan).fillna(0)
+        
+        # Scale prediction features
+        features_scaled = scaler.transform(features)
+        
         # Get predicted probabilities for prediction data
         probabilities = model.predict_proba(features_scaled)[:, 1]
-
+        
         # Assign probabilities to drivers
         data['WinProbability'] = probabilities * 100  # Convert to percentage
 
-        # Sort drivers by descending probability
-        data.sort_values('WinProbability', ascending=False, inplace=True)
-
+        if 'DriverId' in data.columns:
+            participating_drivers = set(data['DriverId'])
+            all_active_drivers = set(self.active_drivers['DriverId'])
+            non_participating_drivers = all_active_drivers - participating_drivers
+            # Add non-participating drivers to the data with WinProbability zero
+            non_participating_data = self.active_drivers[self.active_drivers['DriverId'].isin(non_participating_drivers)]
+            non_participating_data = non_participating_data.merge(
+                self.driver_standings[['DriverId', 'ConstructorId']], on='DriverId', how='left'
+            )
+            non_participating_data = non_participating_data.merge(
+                self.constructor_standings[['ConstructorId', 'ConstructorName']], on='ConstructorId', how='left'
+            )
+            non_participating_data['WinProbability'] = 0.0
+            # Combine data
+            data = pd.concat([data, non_participating_data[['Driver', 'ConstructorName', 'WinProbability']]], ignore_index=True)
+    
+        # Remove any duplicate entries for drivers
+        data = data.drop_duplicates(subset=['DriverId'], keep='first')
+    
+        # Sort drivers by ascending or descending win probability
+        data.sort_values('WinProbability', ascending=ascending, inplace=True)
+        
         # Return the DataFrame containing drivers and their win probabilities
         return data[['Driver', 'ConstructorName', 'WinProbability']]
+
+    def predict_race_winner(self, grand_prix_name, race_year, ascending=False):
+        """
+        Predicts the winner of a specified Grand Prix.
+        """
+        circuit_id = self.get_circuit_id(grand_prix_name)
+
+        # Get race details
+        race_info = self.grand_prix_data.get(grand_prix_name)
+        if not race_info:
+            print(f"No data available for {grand_prix_name}")
+            return None
+
+        # Prepare historical data
+        historical_data = self.prepare_historical_data()
+
+        # Calculate circuit-specific stats
+        circuit_stats = self.calculate_circuit_stats(circuit_id, historical_data)
+
+        # Prepare features for modeling
+        features, data, historical_features, feature_columns = self.prepare_features(
+            historical_data,
+            circuit_stats,
+            grand_prix_name,
+            race_year,
+        )
+
+        print("Qualifying Positions:")
+        print(data[['Driver', 'ConstructorName', 'QualifyingPosition']])
+
+        # Target variable
+        target = historical_data['Win']
+
+        # Train the model
+        model, scaler = self.train_model(historical_features, target, feature_columns)
+
+        # Assign win probabilities
+        result = self.assign_win_probabilities(model, scaler, features, data, ascending=ascending)
+
+        return result
 
 # Example usage
 if __name__ == "__main__":
     predictor = F1Predictor()
-    grand_prix = 'Great Britain'  # Grand Prix name (e.g., 'Abu Dhabi', 'Monaco')
-    race_year = 2024     # Year of the race
+    grand_prix = 'Abu Dhabi'  # Grand Prix name
+    race_year = 2024        # Year of the race
 
-    driver_probabilities = predictor.predict_race_winner(grand_prix, race_year)
+    driver_probabilities = predictor.predict_race_winner(grand_prix, race_year, ascending=False)
     if driver_probabilities is not None:
         print(f"Predicted probabilities for the {grand_prix} Grand Prix {race_year}:")
         print(driver_probabilities.to_string(index=False))
