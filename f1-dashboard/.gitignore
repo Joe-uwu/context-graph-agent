@@ -21,3 +21,70 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# FastF1 cache (LARGE: can be 10GB+, never commit)
+.fastf1_cache/
+fastf1_cache/
+.kaggle_data/
+
+# Data files (parquet, CSV, HDF5, etc.)
+*.parquet
+*.feather
+*.hdf5
+*.csv
+*.sqlite
+
+# Python cache and environment
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+venv/
+ENV/
+env/
+
+# IDE and editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# Testing and coverage
+.pytest_cache/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Mac
+.DS_Store
