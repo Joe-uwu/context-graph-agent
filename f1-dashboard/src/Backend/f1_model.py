@@ -20,9 +20,9 @@ import json
 
 @dataclass
 class PredictorConfig:
-    grid_alpha: float = 0.2096  # Was 0.1400
-    temperature: float = 0.6946  # Was 0.5000
-    form_boost_weight: float = 0.2195  # Was 0.3000
+    grid_alpha: float = 0.147  
+    temperature: float = 0.423 
+    form_boost_weight: float = 0.170  
     circuit_overtaking_map: Dict[int, float] = field(default_factory=dict)
 
 
@@ -407,9 +407,9 @@ class PredictorCalibrator:
                 )
                 
                 if not predictions.empty:
-                    # Check if actual winner is in top 3 predictions
-                    top_3 = predictions.head(3)['driver_code'].tolist()
-                    if race['actual_winner'] in top_3:
+                    # Winner-focused metric: Hit@1 (top-1 correctness)
+                    top_1 = predictions.iloc[0]['driver_code']
+                    if race['actual_winner'] == top_1:
                         correct += 1
         finally:
             # Restore old config
@@ -541,8 +541,8 @@ class PredictorCalibrator:
         new_acc = 1 - new_loss
         
         print(f"[Calibration] Optimization complete!")
-        print(f"  Old accuracy: {old_acc * 100:.1f}%")
-        print(f"  New accuracy: {new_acc * 100:.1f}%")
+        print(f"  Old Hit@1: {old_acc * 100:.1f}%")
+        print(f"  New Hit@1: {new_acc * 100:.1f}%")
         print(f"  Improvement: +{(new_acc - old_acc) * 100:.1f}%")
         print(f"  Parameters: grid_alpha={result.x[0]:.3f}, form_boost_weight={result.x[1]:.3f}, temperature={result.x[2]:.3f}")
         
@@ -611,8 +611,8 @@ def generate_calibration_report(results_file: str = "calibration_results.json") 
 
 ## Summary
 - **Races Used:** {data['num_races_used']} races (from {data['min_year']} onwards)
-- **Old Accuracy:** {data['old_accuracy']*100:.1f}%
-- **New Accuracy:** {data['new_accuracy']*100:.1f}%
+- **Old Hit@1:** {data['old_accuracy']*100:.1f}%
+- **New Hit@1:** {data['new_accuracy']*100:.1f}%
 - **Improvement:** +{data['improvement']*100:.1f}%
 
 ## Optimized Parameters

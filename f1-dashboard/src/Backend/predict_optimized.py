@@ -236,10 +236,14 @@ def predict_upcoming_race(predictor, loader):
 
     try:
         sched = fastf1.get_event_schedule(year)
-        events = sched.loc[sched["EventName"].notna(), ["RoundNumber", "EventName", "EventDate"]].copy()
+        events = pd.DataFrame(
+            sched.loc[sched["EventName"].notna(), ["RoundNumber", "EventName", "EventDate"]].copy()
+        )
         events["EventDate"] = pd.to_datetime(events["EventDate"], errors="coerce")
         today = pd.Timestamp.today(tz=None)
-        upcoming = events[events["EventDate"] >= today].sort_values("EventDate")
+        event_mask = events["EventDate"] >= today
+        filtered_events = pd.DataFrame(events.loc[event_mask].copy())
+        upcoming = filtered_events.sort_values("EventDate")
         if upcoming.empty:
             print("The schedule for the new season is not available yet")
             return
@@ -304,7 +308,7 @@ def calibrate_model(predictor):
     
     print("\nStarting parameter optimization...")
     print("This may take 1-2 minutes. The model will try different parameter combinations")
-    print("to maximize accuracy on past race predictions.\n")
+    print("to maximize winner Hit@1 (top-1 correctness) on past races.\n")
     
     optimal_config = calibrator.calibrate(min_year=min_year, max_races=max_races, method='differential_evolution')
     
