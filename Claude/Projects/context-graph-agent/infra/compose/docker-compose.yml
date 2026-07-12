@@ -1,0 +1,183 @@
+# Full local stack: backing infrastructure + every service + the dashboard.
+# The in-memory runtime needs none of this (use `cortex-demo`); this brings up the
+# production-shaped kafka runtime. See docs/deployment.md.
+#
+#   docker compose -f infra/compose/docker-compose.yml up
+#
+# Each pipeline service builds from its own Dockerfile (services/<svc>/Dockerfile) so it
+# is independently deployable; they share environment + dependency wiring via the
+# x-service-env / x-service-deps anchors below.
+
+name: cortex
+
+x-service-env: &service-env
+  CORTEX_RUNTIME: kafka
+  CORTEX_KAFKA_BOOTSTRAP: kafka:9092
+  CORTEX_NEO4J_URI: bolt://neo4j:7687
+  CORTEX_NEO4J_PASSWORD: password
+  CORTEX_QDRANT_URL: http://qdrant:6333
+  CORTEX_REDIS_URL: redis://redis:6379/0
+  CORTEX_OTEL_ENDPOINT: http://otel-collector:4317
+
+x-service-deps: &service-deps
+  kafka: {condition: service_healthy}
+  neo4j: {condition: service_healthy}
+  qdrant: {condition: service_started}
+  redis: {condition: service_started}
+
+services:
+  # --- infrastructure ---
+  kafka:
+    image: bitnami/kafka:3.7
+    environment:
+      KAFKA_CFG_NODE_ID: "0"
+      KAFKA_CFG_PROCESS_ROLES: controller,broker
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 0@kafka:9093
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+    ports: ["9092:9092"]
+
+  neo4j:
+    image: neo4j:5.20
+    environment:
+      NEO4J_AUTH: neo4j/password
+      NEO4J_PLUGINS: '["apoc"]'
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+    ports: ["7474:7474", "7687:7687"]
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports: ["6333:6333"]
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: cortex
+    ports: ["5432:5432"]
+
+  otel-collector:
+    image: otel/opentelemetry-collector:latest
+    command: ["--config=/etc/otel/config.yaml"]
+    volumes: ["../monitoring/otel/otel-collector.yaml:/etc/otel/config.yaml:ro"]
+    ports: ["4317:4317"]
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - "../monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro"
+      - "../monitoring/prometheus/alerts:/etc/prometheus/alerts:ro"
+    ports: ["9090:9090"]
+    depends_on: [api-service]
+
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+    volumes:
+      - "../monitoring/grafana/provisioning:/etc/grafana/provisioning:ro"
+      - "../monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro"
+    ports: ["3001:3000"]
+    depends_on: [prometheus]
+
+  # --- pipeline services (each its own deployable image) ---
+  # Liveness is enforced by the HEALTHCHECK baked into each service Dockerfile.
+  ingestion-service:
+    build: {context: ../.., dockerfile: services/ingestion-service/Dockerfile}
+    environment:
+      <<: *service-env
+      CORTEX_HTTP_PORT: "8001"
+    depends_on: {<<: *service-deps}
+    restart: unless-stopped
+    ports: ["8001:8001"]
+
+  entity-service:
+    build: {context: ../.., dockerfile: services/entity-service/Dockerfile}
+    environment:
+      <<: *service-env
+      CORTEX_HTTP_PORT: "8002"
+    depends_on: {<<: *service-deps}
+    restart: unless-stopped
+    ports: ["8002:8002"]
+
+  graph-service:
+    build: {context: ../.., dockerfile: services/graph-service/Dockerfile}
+    environment:
+      <<: *service-env
+      CORTEX_HTTP_PORT: "8003"
+    depends_on: {<<: *service-deps}
+    restart: unless-stopped
+    ports: ["8003:8003"]
+
+  retrieval-service:
+    build: {context: ../.., dockerfile: services/retrieval-service/Dockerfile}
+    environment:
+      <<: *service-env
+      CORTEX_HTTP_PORT: "8004"
+    depends_on: {<<: *service-deps}
+    restart: unless-stopped
+    ports: ["8004:8004"]
+
+  ranking-service:
+    build: {context: ../.., dockerfile: services/ranking-service/Dockerfile}
+    environment:
+      <<: *service-env
+      CORTEX_HTTP_PORT: "8005"
+    depends_on: {<<: *service-deps}
+    restart: unless-stopped
+    ports: ["8005:8005"]
+
+  llm-service:
+    build: {context: ../.., dockerfile: services/llm-service/Dockerfile}
+    environment:
+      <<: *service-env
+      CORTEX_HTTP_PORT: "8006"
+    depends_on: {<<: *service-deps}
+    restart: unless-stopped
+    ports: ["8006:8006"]
+
+  notification-service:
+    build: {context: ../.., dockerfile: services/notification-service/Dockerfile}
+    environment:
+      <<: *service-env
+      CORTEX_HTTP_PORT: "8007"
+    depends_on: {<<: *service-deps}
+    restart: unless-stopped
+    ports: ["8007:8007"]
+
+  api-service:
+    build: {context: ../.., dockerfile: services/api-service/Dockerfile}
+    environment:
+      <<: *service-env
+      CORTEX_HTTP_PORT: "8000"
+    depends_on: {<<: *service-deps}
+    restart: unless-stopped
+    ports: ["8000:8000"]
+
+  # The dashboard is built in Phase 7; guard it behind a profile so `docker compose up`
+  # (and CI smoke) don't try to build apps/dashboard until it exists. Start it later with
+  # `docker compose --profile frontend up`.
+  dashboard:
+    profiles: ["frontend"]
+    build:
+      context: ../../apps/dashboard
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports: ["3000:3000"]
+    depends_on: [api-service]

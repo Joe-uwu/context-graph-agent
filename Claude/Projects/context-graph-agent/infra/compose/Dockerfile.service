@@ -1,0 +1,23 @@
+# Shared image for every Python service. Each service is the same image with a different
+# entrypoint command (see docker-compose.yml). In a production registry these would be
+# built per service from services/<name>/Dockerfile with only that service's deps; the
+# shared image keeps local builds fast.
+FROM python:3.12-slim AS base
+
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+WORKDIR /app
+
+# Install the whole workspace editable. Copy manifests first for layer caching.
+COPY pyproject.toml README.md CODE_README.md ./
+COPY packages ./packages
+COPY services ./services
+COPY tools ./tools
+
+RUN pip install --no-cache-dir -e ".[api,kafka,neo4j,qdrant,otel]"
+
+# Non-root
+RUN useradd -m cortex && chown -R cortex /app
+USER cortex
+
+# Default command is overridden per service in compose/k8s.
+CMD ["python", "-m", "cortex.tools.demo"]

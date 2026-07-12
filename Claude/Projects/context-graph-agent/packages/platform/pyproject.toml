@@ -1,0 +1,21 @@
+[project]
+name = "cortex-platform"
+version = "0.1.0"
+description = "Cortex cross-cutting platform: event bus, config, logging, observability, health."
+requires-python = ">=3.11"
+dependencies = ["pydantic>=2.6", "pydantic-settings>=2.2", "cortex-contracts"]
+
+[project.optional-dependencies]
+# The HTTP surface (cortex.platform.http: base app, health/ready/metrics, serve()) needs
+# fastapi + uvicorn. It is optional so importing the bus/config/logging does not pull a
+# web stack; every service installs this extra.
+http = ["fastapi>=0.110", "uvicorn>=0.29"]
+kafka = ["confluent-kafka>=2.4"]
+otel = ["opentelemetry-sdk>=1.25", "opentelemetry-exporter-otlp>=1.25"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
