@@ -1,0 +1,18 @@
+[project]
+name = "cortex-tools"
+version = "0.1.0"
+description = "Cortex tools: synthetic event generator and the in-process pipeline runner."
+requires-python = ">=3.11"
+dependencies = [
+    "cortex-contracts", "cortex-platform", "cortex-graph-sdk",
+    "cortex-ingestion-service", "cortex-entity-service", "cortex-graph-service",
+    "cortex-retrieval-service", "cortex-ranking-service", "cortex-llm-service",
+    "cortex-notification-service",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

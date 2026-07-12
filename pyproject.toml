@@ -1,0 +1,88 @@
+[project]
+name = "cortex-agent"
+version = "0.1.0"
+description = "Cortex — proactive enterprise context graph platform"
+readme = "CODE_README.md"
+requires-python = ">=3.11"
+# Root distribution for local development: installs every package + service in the
+# workspace as one editable install so the pipeline runs end-to-end. In production
+# each service under services/*/ is built and deployed independently from its own
+# pyproject + Dockerfile (see docs/architecture/folder-structure.md).
+dependencies = [
+    "pydantic>=2.6",
+    "pydantic-settings>=2.2",
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+]
+
+[project.optional-dependencies]
+# fastapi/uvicorn are already base deps; this extra makes the many `.[api]` references
+# (Dockerfiles, docs, CI) resolve without a pip warning.
+api = ["fastapi>=0.110", "uvicorn>=0.29"]
+kafka = ["confluent-kafka>=2.4"]
+neo4j = ["neo4j>=5.20"]
+qdrant = ["qdrant-client>=1.9"]
+otel = ["opentelemetry-sdk>=1.25", "opentelemetry-exporter-otlp>=1.25"]
+github = ["httpx>=0.27", "pyjwt[crypto]>=2.8"]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "ruff>=0.4", "mypy>=1.10", "httpx>=0.27"]
+
+[project.scripts]
+cortex-demo = "cortex.tools.demo:main"
+cortex-synth = "cortex.tools.synthetic.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+# The cortex.* namespace is a PEP 420 implicit namespace package spread across the
+# packages/ and services/ source roots; each is an independently packaged deployable.
+[tool.setuptools.packages.find]
+where = [
+    "packages/contracts/src",
+    "packages/platform/src",
+    "packages/graph_sdk/src",
+    "services/ingestion-service/src",
+    "services/entity-service/src",
+    "services/graph-service/src",
+    "services/retrieval-service/src",
+    "services/ranking-service/src",
+    "services/llm-service/src",
+    "services/notification-service/src",
+    "services/api-service/src",
+    "tools/src",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+namespace_packages = true
+explicit_package_bases = true
+mypy_path = [
+    "packages/contracts/src", "packages/platform/src", "packages/graph_sdk/src",
+    "services/ingestion-service/src", "services/entity-service/src",
+    "services/graph-service/src", "services/retrieval-service/src",
+    "services/ranking-service/src", "services/llm-service/src",
+    "services/notification-service/src", "services/api-service/src", "tools/src",
+]
+
+[[tool.mypy.overrides]]
+module = ["confluent_kafka.*", "neo4j.*", "qdrant_client.*", "opentelemetry.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+pythonpath = [
+    "packages/contracts/src", "packages/platform/src", "packages/graph_sdk/src",
+    "services/ingestion-service/src", "services/entity-service/src",
+    "services/graph-service/src", "services/retrieval-service/src",
+    "services/ranking-service/src", "services/llm-service/src",
+    "services/notification-service/src", "services/api-service/src", "tools/src",
+]
+testpaths = ["tests"]
+asyncio_mode = "auto"

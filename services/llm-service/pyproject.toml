@@ -1,0 +1,22 @@
+[project]
+name = "cortex-llm-service"
+version = "0.1.0"
+description = "Cortex llm-service: grounded LangGraph reasoning over graph evidence."
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.6", "pydantic-settings>=2.2", "fastapi>=0.110", "uvicorn>=0.29",
+    "cortex-contracts", "cortex-platform", "cortex-graph-sdk", "cortex-retrieval-service",
+]
+
+[project.scripts]
+cortex-llm-service = "cortex.services.llm.main:main"
+
+[project.optional-dependencies]
+langgraph = ["langgraph>=0.1", "langchain-core>=0.2"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

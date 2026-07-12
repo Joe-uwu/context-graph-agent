@@ -1,0 +1,22 @@
+[project]
+name = "cortex-ranking-service"
+version = "0.1.0"
+description = "Cortex ranking-service: background urgency scoring over changed subgraphs."
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.6", "pydantic-settings>=2.2", "fastapi>=0.110", "uvicorn>=0.29",
+    "cortex-contracts", "cortex-platform", "cortex-graph-sdk",
+]
+
+[project.scripts]
+cortex-ranking-service = "cortex.services.ranking.main:main"
+
+[project.optional-dependencies]
+ray = ["ray>=2.10"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

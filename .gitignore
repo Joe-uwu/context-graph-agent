@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Env / secrets
+.env
+*.local
+
+# Node / dashboard
+node_modules/
+apps/dashboard/.next/
+apps/dashboard/out/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+
+#Ignore vscode AI rules
+.github\instructions\codacy.instructions.md

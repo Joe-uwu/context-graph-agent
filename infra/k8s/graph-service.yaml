@@ -1,0 +1,51 @@
+# Reference manifest — graph-service. Other services follow the same shape.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: graph-service
+  namespace: processing
+  labels: {app: graph-service, tier: processing}
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: graph-service}
+  template:
+    metadata:
+      labels: {app: graph-service}
+    spec:
+      containers:
+        - name: graph-service
+          image: cortex/service:latest
+          command: ["python", "-m", "cortex.services.graph.main"]
+          env:
+            - {name: CORTEX_RUNTIME, value: kafka}
+            - {name: CORTEX_KAFKA_BOOTSTRAP, value: kafka-bootstrap.data:9092}
+            - {name: CORTEX_NEO4J_URI, value: bolt://neo4j.data:7687}
+            - name: CORTEX_NEO4J_PASSWORD
+              valueFrom: {secretKeyRef: {name: neo4j-auth, key: password}}
+            - {name: CORTEX_OTEL_ENDPOINT, value: http://otel-collector.observability:4317}
+          resources:
+            requests: {cpu: "250m", memory: "512Mi"}
+            limits: {cpu: "1", memory: "1Gi"}
+          readinessProbe:
+            httpGet: {path: /ready, port: 8000}
+            initialDelaySeconds: 10
+          livenessProbe:
+            httpGet: {path: /health, port: 8000}
+            initialDelaySeconds: 20
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: graph-service
+  namespace: processing
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: graph-service}
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    # Scale on Kafka consumer lag for entities.extracted (via a custom/external metric).
+    - type: External
+      external:
+        metric: {name: kafka_consumergroup_lag, selector: {matchLabels: {topic: entities.extracted}}}
+        target: {type: AverageValue, averageValue: "1000"}

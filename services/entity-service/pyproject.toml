@@ -1,0 +1,19 @@
+[project]
+name = "cortex-entity-service"
+version = "0.1.0"
+description = "Cortex entity-service: normalize raw events into typed entities."
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.6", "pydantic-settings>=2.2", "fastapi>=0.110", "uvicorn>=0.29",
+    "cortex-contracts", "cortex-platform",
+]
+
+[project.scripts]
+cortex-entity-service = "cortex.services.entity.main:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
