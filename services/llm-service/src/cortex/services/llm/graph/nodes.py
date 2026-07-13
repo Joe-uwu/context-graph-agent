@@ -116,7 +116,8 @@ def ground(state: ReasoningState, deps) -> ReasoningState:
             node = nodes.get(nid)
             if node:
                 citations.append(Citation(
-                    ref_id=node.id, kind="node", label=node.label.value, confidence=node.confidence
+                    ref_id=node.id, kind="node", label=node.label.value,
+                    confidence=node.confidence,
                 ))
                 cited.add(nid)
         edge = edges_by_id.get(finding.edge_id) if finding.edge_id else None

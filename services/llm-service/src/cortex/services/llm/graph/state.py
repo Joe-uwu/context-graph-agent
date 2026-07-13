@@ -66,7 +66,7 @@ class ReasoningState:
     halt_reason: str = ""
     trace: list[str] = field(default_factory=list)
 
-    def halt(self, reason: str) -> "ReasoningState":
+    def halt(self, reason: str) -> ReasoningState:
         self.halted = True
         self.halt_reason = reason
         return self

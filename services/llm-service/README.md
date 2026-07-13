@@ -1,13 +1,27 @@
 # llm-service
 
 Consumes `risk.scored`, gathers k-hop evidence via retrieval-service, runs the grounded
-reasoner (a citation-validating template reasoner today; LangGraph pipeline in Phase 6), and
-emits `reasoning.produced`. Serves on-demand reasoning over HTTP.
+reasoning graph, and emits `reasoning.produced`. Serves on-demand reasoning over HTTP.
 
 ## Topics
 
 - Consumes: `risk.scored`
 - Produces: `reasoning.produced`
+
+## Reasoning graph
+
+The reasoning stage is a typed state graph (`cortex.services.llm.graph`), not a single
+prompt→answer call:
+
+    Observe → Retrieve → Verify → GraphTraverse → Reason → Ground → Explain → Recommend → Notify
+
+Each node is a pure, independently-callable function over a typed `ReasoningState`; the
+engine runs them with per-node retry and records a trace, and `Verify` can halt the pipeline
+when the evidence is too thin to reason over. `Ground` runs the citation validator, so every
+claim resolves to a real graph node or edge (confidence = the weakest cited edge). `Reason`,
+`Explain`, and `Recommend` build the text; a real LangGraph/LLM backend can replace the node
+bodies without changing the graph shape (`langgraph` optional extra). `GraphReasoner`
+implements the `Reasoner` protocol, so it drops straight into the worker and the HTTP route.
 
 ## HTTP surface
 

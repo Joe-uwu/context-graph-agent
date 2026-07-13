@@ -46,21 +46,23 @@ class StateGraph:
     edges: dict[str, _Edge] = field(default_factory=dict)
     entry: str | None = None
 
-    def add_node(self, name: str, fn: NodeFn, *, retries: int = 1) -> "StateGraph":
+    def add_node(self, name: str, fn: NodeFn, *, retries: int = 1) -> StateGraph:
         if name in self.nodes:
             raise ValueError(f"duplicate node: {name}")
         self.nodes[name] = Node(name, fn, retries=retries)
         return self
 
-    def set_entry(self, name: str) -> "StateGraph":
+    def set_entry(self, name: str) -> StateGraph:
         self.entry = name
         return self
 
-    def add_edge(self, frm: str, to: str) -> "StateGraph":
+    def add_edge(self, frm: str, to: str) -> StateGraph:
         self.edges[frm] = _Edge(condition=None, if_true=to)
         return self
 
-    def add_conditional(self, frm: str, condition: Condition, if_true: str, if_false: str) -> "StateGraph":
+    def add_conditional(
+        self, frm: str, condition: Condition, if_true: str, if_false: str
+    ) -> StateGraph:
         self.edges[frm] = _Edge(condition=condition, if_true=if_true, if_false=if_false)
         return self
 
@@ -93,11 +95,13 @@ class StateGraph:
         for attempt in range(1, node.retries + 1):
             try:
                 return node.run(state, deps)
-            except Exception as exc:  # noqa: BLE001 - a node error is recoverable via retry
+            except Exception as exc:  # noqa: BLE001 - node errors are retryable
                 last = exc
                 log.warning(
                     "reasoning node failed",
-                    extra={"extra_fields": {"node": node.name, "attempt": attempt, "error": str(exc)}},
+                    extra={"extra_fields": {
+                        "node": node.name, "attempt": attempt, "error": str(exc),
+                    }},
                 )
         # Retries exhausted: halt the pipeline rather than crash the worker.
         state.trace.append(f"{node.name}:error")
