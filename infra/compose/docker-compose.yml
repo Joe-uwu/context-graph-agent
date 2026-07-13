@@ -112,6 +112,22 @@ services:
     ports: ["3001:3000"]
     depends_on: [prometheus]
 
+  # Kafka consumer-group lag → Prometheus (kafka_consumergroup_lag).
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:latest
+    command: ["--kafka.server=kafka:9092"]
+    ports: ["9308:9308"]
+    depends_on: [kafka]
+    restart: unless-stopped
+
+  # Trace storage for the Grafana trace view (service map comes from the collector's
+  # servicegraph connector, not Tempo).
+  tempo:
+    image: grafana/tempo:latest
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    volumes: ["../monitoring/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro"]
+    ports: ["3200:3200"]
+
   # --- pipeline services (each its own deployable image) ---
   # Liveness is enforced by the HEALTHCHECK baked into each service Dockerfile.
   ingestion-service:

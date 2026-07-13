@@ -1,0 +1,56 @@
+# OpenTelemetry Collector for Cortex.
+#
+# Receives OTLP traces from every service (CORTEX_OTEL_ENDPOINT), derives service-graph and
+# span metrics with connectors, exposes them on :8889 for Prometheus (the service map is
+# built from these), and forwards raw traces to Tempo for the trace view in Grafana.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch: {}
+
+connectors:
+  # Emits traces_service_graph_request_total / _request_server_seconds etc. — Grafana's
+  # node-graph panel renders these as the service map.
+  servicegraph:
+    latency_histogram_buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5]
+    store:
+      ttl: 5s
+      max_items: 2000
+  # Emits calls_total / duration per span for RED-style panels straight from traces.
+  spanmetrics:
+    histogram:
+      explicit:
+        buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5]
+    dimensions:
+      - name: service.name
+
+exporters:
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    send_timestamps: true
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+  debug:
+    verbosity: basic
+
+service:
+  telemetry:
+    metrics:
+      address: 0.0.0.0:8888
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [servicegraph, spanmetrics, otlp/tempo, debug]
+    metrics/from-traces:
+      receivers: [servicegraph, spanmetrics]
+      exporters: [prometheus]

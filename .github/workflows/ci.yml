@@ -81,14 +81,11 @@ jobs:
   # --- full stack via docker compose (kafka runtime end-to-end) ------------------
   # Brings up the production-shaped stack (Kafka/Neo4j/Qdrant/Redis + all eight services),
   # waits for health, scrapes metrics, seeds the synthetic scenario, and asserts the API
-  # gateway returns ranked risks. Non-blocking for now: the per-service adapters are already
-  # gated for real by build-and-smoke (each image boots) + graph-it (Neo4j) + vector-it
-  # (Qdrant); this job additionally exercises the whole stack together, and the diagnostics
-  # step prints container status + logs so any failure is pinpointable.
+  # gateway returns ranked risks. Hard gate: the whole stack must come up in the kafka
+  # runtime. The diagnostics step prints container status + logs on any failure.
   compose-smoke:
     runs-on: ubuntu-latest
     needs: test
-    continue-on-error: true
     env:
       COMPOSE: docker compose -f infra/compose/docker-compose.yml
     steps:

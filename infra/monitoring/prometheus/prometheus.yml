@@ -1,6 +1,6 @@
 # Prometheus scrape configuration for the Cortex stack.
-# Every service exposes Prometheus metrics at /metrics on its HTTP port; Prometheus
-# reaches them by compose service name inside the `cortex` network.
+# Services expose /metrics; kafka-exporter exposes consumer lag; the OTel collector exposes
+# trace-derived service-graph metrics (via its prometheus exporter).
 
 global:
   scrape_interval: 15s
@@ -36,6 +36,17 @@ scrape_configs:
       - targets: ["notification-service:8007"]
         labels: {service: notification-service}
 
+  # Kafka consumer lag (danielqsj/kafka-exporter).
+  - job_name: kafka-exporter
+    static_configs:
+      - targets: ["kafka-exporter:9308"]
+
+  # Trace-derived service-graph + span metrics from the OTel collector's prometheus exporter.
   - job_name: otel-collector
+    static_configs:
+      - targets: ["otel-collector:8889"]
+
+  # The collector's own internal telemetry.
+  - job_name: otel-collector-internal
     static_configs:
       - targets: ["otel-collector:8888"]

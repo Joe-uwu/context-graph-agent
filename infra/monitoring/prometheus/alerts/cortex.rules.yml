@@ -1,0 +1,71 @@
+# Recording + alerting rules for the Cortex platform.
+# Metric names match what the services emit (cortex.platform.observability / http.py) and
+# what kafka-exporter exposes. Loaded via prometheus.yml `rule_files`.
+
+groups:
+  - name: cortex-recording
+    interval: 30s
+    rules:
+      # Throughput: requests/sec per service.
+      - record: service:http_requests:rate5m
+        expr: sum by (service) (rate(cortex_http_requests_total[5m]))
+      # Errors/sec per service (5xx).
+      - record: service:http_errors:rate5m
+        expr: sum by (service) (rate(cortex_http_requests_total{status=~"5.."}[5m]))
+      # Error ratio per service (0..1).
+      - record: service:http_error_ratio:5m
+        expr: |
+          service:http_errors:rate5m
+          / clamp_min(service:http_requests:rate5m, 1e-9)
+      # Latency quantiles per service (seconds).
+      - record: service:http_latency_p50:5m
+        expr: histogram_quantile(0.50, sum by (service, le) (rate(cortex_http_request_duration_seconds_bucket[5m])))
+      - record: service:http_latency_p95:5m
+        expr: histogram_quantile(0.95, sum by (service, le) (rate(cortex_http_request_duration_seconds_bucket[5m])))
+      - record: service:http_latency_p99:5m
+        expr: histogram_quantile(0.99, sum by (service, le) (rate(cortex_http_request_duration_seconds_bucket[5m])))
+      # Pipeline throughput: events processed/sec per stage.
+      - record: service:events_processed:rate5m
+        expr: sum by (service) (rate(cortex_events_processed_total[5m]))
+
+  - name: cortex-alerts
+    rules:
+      - alert: CortexServiceDown
+        expr: up{job="cortex-services"} == 0
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.service }} is down"
+          description: "Prometheus cannot scrape {{ $labels.instance }} ({{ $labels.service }}) for 1m."
+
+      - alert: CortexHighErrorRate
+        expr: service:http_error_ratio:5m > 0.05
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "High 5xx error rate on {{ $labels.service }}"
+          description: "{{ $labels.service }} 5xx ratio is {{ $value | humanizePercentage }} (>5%) for 5m."
+
+      - alert: CortexHighLatencyP95
+        expr: service:http_latency_p95:5m > 1
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "p95 latency high on {{ $labels.service }}"
+          description: "{{ $labels.service }} p95 request latency is {{ $value }}s (>1s) for 10m."
+
+      - alert: CortexKafkaConsumerLag
+        expr: sum by (consumergroup, topic) (kafka_consumergroup_lag) > 1000
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Kafka consumer lag on {{ $labels.consumergroup }}"
+          description: "Group {{ $labels.consumergroup }} is {{ $value }} messages behind on {{ $labels.topic }} for 10m."
+
+      - alert: CortexPipelineStalled
+        expr: sum(rate(cortex_events_processed_total[10m])) == 0 and sum(rate(cortex_events_published_total[10m])) > 0
+        for: 10m
+        labels: {severity: critical}
+        annotations:
+          summary: "Pipeline stalled"
+          description: "Events are being ingested but no stage has processed an event in 10m."
