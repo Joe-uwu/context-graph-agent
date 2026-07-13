@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Cortex — Context Graph Console</title>
+<style>
+  :root {
+    --bg: #0b0e14; --panel: #121722; --panel2: #171d2b; --line: #232c3d;
+    --text: #dbe3f0; --muted: #8994a8; --accent: #3aa0ff; --accent2: #7c5cff;
+    --ok: #35c98a; --warn: #f5b942; --crit: #ff5470; --chip: #1d2536;
+    --sev1: #ff5470; --sev2: #f5b942; --sev3: #3aa0ff;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 13px/1.5 -apple-system, "Segoe UI", Roboto, Inter, sans-serif;
+  }
+  #root { height: 100vh; display: flex; flex-direction: column; }
+  .topbar {
+    display: flex; align-items: center; gap: 14px; padding: 10px 16px;
+    border-bottom: 1px solid var(--line); background: var(--panel);
+  }
+  .brand { font-weight: 700; letter-spacing: .3px; font-size: 15px; }
+  .brand .dot { color: var(--accent); }
+  .grow { flex: 1; }
+  .pill { background: var(--chip); border: 1px solid var(--line); border-radius: 999px;
+    padding: 4px 10px; color: var(--muted); font-size: 12px; }
+  input, select, button {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 8px; padding: 6px 10px; font-size: 12px; outline: none;
+  }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  .main { flex: 1; display: flex; min-height: 0; }
+  .nav { width: 210px; border-right: 1px solid var(--line); background: var(--panel);
+    padding: 10px; display: flex; flex-direction: column; gap: 2px; }
+  .nav .grp { color: var(--muted); font-size: 10px; text-transform: uppercase;
+    letter-spacing: .8px; margin: 12px 8px 4px; }
+  .nav a { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 8px;
+    color: var(--text); text-decoration: none; font-size: 13px; }
+  .nav a:hover { background: var(--panel2); }
+  .nav a.active { background: #1b2740; color: #fff; box-shadow: inset 2px 0 0 var(--accent); }
+  .nav a .ic { width: 16px; text-align: center; color: var(--muted); }
+  .nav a.active .ic { color: var(--accent); }
+  .content { flex: 1; overflow: auto; padding: 18px 22px; min-width: 0; }
+  .h1 { font-size: 18px; font-weight: 700; margin: 0 0 2px; }
+  .sub { color: var(--muted); margin-bottom: 16px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+  .card h3 { margin: 0 0 8px; font-size: 13px; }
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+  .kpi { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+  .kpi .n { font-size: 26px; font-weight: 700; }
+  .kpi .l { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .5px; }
+  .bar { height: 6px; background: var(--chip); border-radius: 4px; overflow: hidden; }
+  .bar > i { display: block; height: 100%; }
+  .row { display: flex; align-items: center; gap: 10px; }
+  .chip { background: var(--chip); border: 1px solid var(--line); border-radius: 6px;
+    padding: 2px 7px; font-size: 11px; color: var(--muted); }
+  .label { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; padding: 2px 6px;
+    border-radius: 5px; background: #1c2740; color: var(--accent); }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); font-size: 12px; }
+  th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; }
+  tr:hover td { background: var(--panel2); }
+  .clickable { cursor: pointer; }
+  .muted { color: var(--muted); }
+  .flex { display: flex; }
+  .between { justify-content: space-between; }
+  .gap { gap: 12px; }
+  .split { display: grid; grid-template-columns: 1.6fr 1fr; gap: 14px; }
+  .list { display: flex; flex-direction: column; gap: 8px; }
+  .item { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--panel); }
+  .item:hover { border-color: var(--accent); }
+  .sev { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  svg text { font-family: inherit; }
+  .tag { font-size: 11px; color: var(--muted); }
+  .banner { background: linear-gradient(90deg, #21122a, #2a1420); border: 1px solid #40203a;
+    border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; }
+  .banner .t { font-weight: 700; color: #ff9bb0; }
+  .scrub { width: 100%; }
+  .streamrow { display: grid; grid-template-columns: 80px 150px 1fr; gap: 10px; padding: 6px 8px;
+    border-bottom: 1px solid var(--line); font-size: 12px; }
+  .dotpulse { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 0 rgba(53,201,138,.6);
+    animation: pulse 1.6s infinite; display:inline-block; }
+  @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(53,201,138,.5)} 70%{box-shadow:0 0 0 7px rgba(53,201,138,0)} 100%{box-shadow:0 0 0 0 rgba(53,201,138,0)} }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script type="module">
+import htm from 'https://unpkg.com/htm?module';
+const html = htm.bind(React.createElement);
+const { useState, useEffect, useMemo, useRef } = React;
+
+/* ---------------- demo data (deploy-will-fail scenario) ---------------- */
+const ORG = "org_demo";
+const DEMO = buildDemo();
+function buildDemo() {
+  const N = (id,label,display,extra={}) => ({ id, label, display, ...extra });
+  const nodes = [
+    N("nd_dep","Deployment","release v2.4.0 → billing", {urgency:0.91, source:"github"}),
+    N("nd_svc","Service","billing-service", {urgency:0.86, source:"github", criticality:"tier0"}),
+    N("nd_inc","Incident","INC-2207 payment retries failing", {urgency:0.88, source:"pagerduty", severity:"SEV1"}),
+    N("nd_pr","PullRequest","#812 rework retry backoff", {urgency:0.63, source:"github"}),
+    N("nd_tkt","Ticket","PAY-1193 idempotency fix", {urgency:0.55, source:"jira", priority:"High"}),
+    N("nd_thr","SlackThread","#payments-oncall (12 msgs)", {urgency:0.5, source:"slack"}),
+    N("nd_per","Person","Dana Ito", {urgency:0.0, source:"github"}),
+    N("nd_repo","Repository","acme/billing", {urgency:0.4, source:"github"}),
+    N("nd_mtg","Meeting","Release go/no-go 15:00", {urgency:0.35, source:"calendar"}),
+  ];
+  const E = (from,to,type,conf=0.9)=>({id:`eg_${from}_${to}`,from_id:from,to_id:to,type,confidence:conf});
+  const edges = [
+    E("nd_inc","nd_svc","AFFECTS",0.95), E("nd_inc","nd_dep","BLOCKS",0.9),
+    E("nd_dep","nd_svc","DEPLOYS",1.0), E("nd_pr","nd_svc","TOUCHES",0.8),
+    E("nd_tkt","nd_svc","REFERENCES",0.7), E("nd_thr","nd_inc","DISCUSSES",0.6),
+    E("nd_per","nd_svc","OWNS",1.0), E("nd_svc","nd_repo","BELONGS_TO",1.0),
+    E("nd_mtg","nd_dep","REFERENCES",0.5), E("nd_pr","nd_per","AUTHORED",1.0),
+  ];
+  const features = {incident_severity:1.0, deployment_proximity:0.8, service_criticality:1.0,
+    blast_radius:0.6, cross_source_corroboration:1.0, blocked_dependency_count:0.66};
+  const risks = nodes.filter(n=>n.urgency>0).map(n=>({id:n.id,label:n.label,display:n.display,
+    urgency:n.urgency, features: n.id==="nd_dep"?features:{service_criticality:0.7}})).sort((a,b)=>b.urgency-a.urgency);
+  const notifications = [{
+    id:"ntf_1", node_id:"nd_dep", channel:"slack", risk_score:0.91, confidence:0.9,
+    recipients:["oncall"], title:"Your 15:00 billing deploy will fail",
+    body:"release v2.4.0 → billing is at risk (score 0.91). INC-2207 affects billing-service. INC-2207 blocks release v2.4.0. The blocking incident is SEV1 and still open."
+  }];
+  const t0 = Date.now() - 1000*60*30;
+  const stream = [
+    ["github","pull_request","#812 rework retry backoff opened", 0],
+    ["pagerduty","incident","INC-2207 opened (SEV1)", 6],
+    ["slack","message","#payments-oncall: retries hammering billing", 9],
+    ["jira","ticket","PAY-1193 idempotency fix created", 12],
+    ["github","deployment","release v2.4.0 scheduled 15:00", 18],
+    ["calendar","meeting","Release go/no-go at 15:00", 20],
+    ["derived","risk.scored","release v2.4.0 → 0.91", 22],
+    ["derived","reasoning","grounded explanation produced", 23],
+    ["derived","notification","SLACK interrupt routed to oncall", 24],
+  ].map(([src,kind,text,m],i)=>({id:"ev"+i, source:src, kind, text, ts:t0+m*60000}));
+  return { nodes, edges, risks, notifications, stream };
+}
+
+/* ---------------- api client (live + demo fallback) ---------------- */
+function useApi() {
+  const [live, setLive] = useState(false);
+  const [base, setBase] = useState("http://localhost:8000");
+  const [status, setStatus] = useState("demo");
+  async function req(path, opts={}) {
+    if (!live) return null;
+    try {
+      const r = await fetch(base+path, {headers:{"x-org-id":ORG,"content-type":"application/json"}, ...opts});
+      if (!r.ok) throw new Error(r.status);
+      setStatus("live");
+      return (await r.json()).data;
+    } catch(e){ setStatus("api unreachable — demo"); return null; }
+  }
+  return { live, setLive, base, setBase, status, req };
+}
+
+/* ---------------- shared bits ---------------- */
+const SEV = {SEV1:"var(--sev1)",SEV2:"var(--sev2)",SEV3:"var(--sev3)"};
+const urgencyColor = u => u>=0.8?"var(--crit)":u>=0.6?"var(--warn)":"var(--accent)";
+function UBar({u}){ return html`<div class="bar"><i style=${{width:(u*100)+"%",background:urgencyColor(u)}}></i></div>`; }
+function Label({t}){ return html`<span class="label">${t}</span>`; }
+
+/* ---------------- force graph ---------------- */
+function ForceGraph({nodes, edges, onPick, selected}) {
+  const ref = useRef(null);
+  const [pos, setPos] = useState({});
+  useEffect(()=>{
+    const W=760,H=460; const P={};
+    nodes.forEach((n,i)=>{ const a=i/nodes.length*Math.PI*2; P[n.id]={x:W/2+Math.cos(a)*160+ (Math.random()*20), y:H/2+Math.sin(a)*140, vx:0, vy:0}; });
+    const idx = Object.fromEntries(nodes.map(n=>[n.id,n]));
+    let raf; let ticks=0;
+    function step(){
+      ticks++;
+      const ids=Object.keys(P);
+      for(const a of ids){ for(const b of ids){ if(a>=b) continue;
+        let dx=P[a].x-P[b].x, dy=P[a].y-P[b].y; let d=Math.hypot(dx,dy)||1;
+        let f=1600/(d*d); P[a].vx+=dx/d*f; P[a].vy+=dy/d*f; P[b].vx-=dx/d*f; P[b].vy-=dy/d*f; } }
+      for(const e of edges){ const A=P[e.from_id],B=P[e.to_id]; if(!A||!B) continue;
+        let dx=B.x-A.x, dy=B.y-A.y, d=Math.hypot(dx,dy)||1, f=(d-150)*0.01;
+        A.vx+=dx/d*f; A.vy+=dy/d*f; B.vx-=dx/d*f; B.vy-=dy/d*f; }
+      for(const id of ids){ P[id].vx*=0.85; P[id].vy*=0.85;
+        P[id].x=Math.max(30,Math.min(W-30,P[id].x+P[id].vx));
+        P[id].y=Math.max(30,Math.min(H-30,P[id].y+P[id].vy)); }
+      setPos({...P});
+      if(ticks<120) raf=requestAnimationFrame(step);
+    }
+    raf=requestAnimationFrame(step);
+    return ()=>cancelAnimationFrame(raf);
+  }, [nodes, edges]);
+  const idx = Object.fromEntries(nodes.map(n=>[n.id,n]));
+  return html`<svg ref=${ref} viewBox="0 0 760 460" style=${{width:"100%",background:"var(--panel2)",borderRadius:"12px",border:"1px solid var(--line)"}}>
+    ${edges.map(e=>{ const A=pos[e.from_id],B=pos[e.to_id]; if(!A||!B) return null;
+      return html`<g key=${e.id}>
+        <line x1=${A.x} y1=${A.y} x2=${B.x} y2=${B.y} stroke=${e.type==="BLOCKS"||e.type==="AFFECTS"?"#5a2b3e":"#2a3446"} stroke-width=${e.type==="BLOCKS"?2:1}/>
+        <text x=${(A.x+B.x)/2} y=${(A.y+B.y)/2} fill="#5c6980" font-size="8">${e.type}</text>
+      </g>`; })}
+    ${nodes.map(n=>{ const p=pos[n.id]; if(!p) return null; const u=n.urgency||0; const sel=selected===n.id;
+      return html`<g key=${n.id} class="clickable" onClick=${()=>onPick&&onPick(n)} transform=${`translate(${p.x},${p.y})`}>
+        <circle r=${sel?16:11} fill=${urgencyColor(u)} opacity=${u>0?0.9:0.4} stroke=${sel?"#fff":"#0b0e14"} stroke-width=${sel?2:1}/>
+        <text x="0" y="26" fill="var(--text)" font-size="9" text-anchor="middle">${n.display.slice(0,22)}</text>
+      </g>`; })}
+  </svg>`;
+}
+
+/* ---------------- views ---------------- */
+function RiskDashboard({data, go}) {
+  const risks = data.risks;
+  const kpi = [
+    ["Tracked entities", data.nodes.length],
+    ["Open incidents", data.nodes.filter(n=>n.label==="Incident").length],
+    ["High risk (≥0.8)", risks.filter(r=>r.urgency>=0.8).length],
+    ["Interrupts", data.notifications.filter(n=>n.channel==="slack").length],
+  ];
+  return html`<div>
+    <div class="h1">Risk Dashboard</div>
+    <div class="sub">Entities ranked by cross-source urgency — the proactive signal no single tool raises.</div>
+    ${data.notifications[0] && html`<div class="banner">
+      <div class="t">⚡ ${data.notifications[0].title}</div>
+      <div class="muted" style=${{marginTop:"4px"}}>${data.notifications[0].body}</div>
+    </div>`}
+    <div class="kpis">${kpi.map(([l,n])=>html`<div class="kpi" key=${l}><div class="n">${n}</div><div class="l">${l}</div></div>`)}</div>
+    <div class="card">
+      <table><thead><tr><th>Entity</th><th>Type</th><th style=${{width:"180px"}}>Urgency</th><th>Top drivers</th></tr></thead>
+      <tbody>${risks.map(r=>html`<tr key=${r.id} class="clickable" onClick=${()=>go("inspector",r.id)}>
+        <td>${r.display}</td><td><${Label} t=${r.label}/></td>
+        <td><div class="row"><span style=${{width:"38px"}}>${r.urgency.toFixed(2)}</span><div style=${{flex:1}}><${UBar} u=${r.urgency}/></div></div></td>
+        <td class="muted">${Object.entries(r.features||{}).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k])=>k.replace(/_/g," ")).join(", ")}</td>
+      </tr>`)}</tbody></table>
+    </div></div>`;
+}
+
+function GraphExplorer({data, go}) {
+  const [sel, setSel] = useState("nd_dep");
+  const [etypes, setEtypes] = useState(null);
+  const allTypes = [...new Set(data.edges.map(e=>e.type))];
+  const edges = etypes ? data.edges.filter(e=>etypes.has(e.type)) : data.edges;
+  const node = data.nodes.find(n=>n.id===sel);
+  return html`<div>
+    <div class="h1">Graph & Relationship Explorer</div>
+    <div class="sub">The context graph joining GitHub, PagerDuty, Slack, Jira and Calendar into one blast-radius view.</div>
+    <div class="split">
+      <div>
+        <div class="row" style=${{marginBottom:"8px",flexWrap:"wrap"}}>
+          <span class="tag">Relationships:</span>
+          ${allTypes.map(t=>html`<span key=${t} class="chip clickable" style=${{borderColor: (!etypes||etypes.has(t))?"var(--accent)":"var(--line)"}}
+            onClick=${()=>{ const s=new Set(etypes||allTypes); s.has(t)?s.delete(t):s.add(t); setEtypes(s.size===allTypes.length?null:s); }}>${t}</span>`)}
+        </div>
+        <${ForceGraph} nodes=${data.nodes} edges=${edges} selected=${sel} onPick=${n=>setSel(n.id)} />
+      </div>
+      <div class="card">
+        <h3>${node?node.display:"—"}</h3>
+        <div class="row" style=${{marginBottom:"8px"}}><${Label} t=${node?.label}/>${node?.source&&html`<span class="chip">${node.source}</span>`}${node?.severity&&html`<span class="chip" style=${{color:SEV[node.severity]}}>${node.severity}</span>`}</div>
+        <div class="tag">Connected via</div>
+        <div class="list" style=${{marginTop:"6px"}}>
+          ${data.edges.filter(e=>e.from_id===sel||e.to_id===sel).map(e=>{ const other=data.nodes.find(n=>n.id===(e.from_id===sel?e.to_id:e.from_id));
+            return html`<div class="item row between clickable" key=${e.id} onClick=${()=>setSel(other.id)}>
+              <span>${e.type} <span class="muted">→</span> ${other?.display}</span><span class="chip">${e.confidence.toFixed(2)}</span></div>`; })}
+        </div>
+        <button style=${{marginTop:"10px"}} onClick=${()=>go("inspector",sel)}>Open in Entity Inspector →</button>
+      </div>
+    </div></div>`;
+}
+
+function EntityInspector({data, id, go}) {
+  const node = data.nodes.find(n=>n.id===id) || data.nodes[0];
+  const edges = data.edges.filter(e=>e.from_id===node.id||e.to_id===node.id);
+  const risk = data.risks.find(r=>r.id===node.id);
+  return html`<div>
+    <div class="h1">Entity Inspector</div>
+    <div class="sub">${node.display}</div>
+    <div class="split">
+      <div class="card">
+        <h3>Properties</h3>
+        <table><tbody>
+          ${Object.entries(node).filter(([k])=>!["display"].includes(k)).map(([k,v])=>html`<tr key=${k}><td class="muted" style=${{width:"140px"}}>${k}</td><td>${String(v)}</td></tr>`)}
+        </tbody></table>
+        ${risk && html`<div style=${{marginTop:"12px"}}><div class="tag">Urgency features</div>
+          ${Object.entries(risk.features||{}).sort((a,b)=>b[1]-a[1]).map(([k,v])=>html`<div class="row" key=${k} style=${{margin:"4px 0"}}>
+            <span style=${{width:"200px"}} class="muted">${k.replace(/_/g," ")}</span><div style=${{flex:1}}><${UBar} u=${v}/></div><span style=${{width:"36px",textAlign:"right"}}>${v.toFixed(2)}</span></div>`)}</div>`}
+      </div>
+      <div class="card">
+        <h3>Relationships (${edges.length})</h3>
+        <div class="list">${edges.map(e=>{ const other=data.nodes.find(n=>n.id===(e.from_id===node.id?e.to_id:e.from_id));
+          return html`<div class="item row between clickable" key=${e.id} onClick=${()=>go("inspector",other.id)}>
+            <span><span class="chip">${e.type}</span> ${other?.display}</span><span class="muted">${e.confidence.toFixed(2)}</span></div>`; })}</div>
+        <button style=${{marginTop:"10px"}} onClick=${()=>go("graph")}>See in graph →</button>
+      </div>
+    </div></div>`;
+}
+
+function Notifications({data}) {
+  return html`<div>
+    <div class="h1">Notification Feed</div>
+    <div class="sub">Bundled, grounded, de-duplicated — one interrupt per situation, everything else in the digest.</div>
+    <div class="list">${data.notifications.map(n=>html`<div class="card" key=${n.id}>
+      <div class="row between"><div class="row"><span class="sev" style=${{background:n.channel==="slack"?"var(--crit)":"var(--warn)"}}></span>
+        <b>${n.title}</b></div><span class="chip">${n.channel.toUpperCase()}</span></div>
+      <div class="muted" style=${{margin:"8px 0"}}>${n.body}</div>
+      <div class="row gap"><span class="chip">risk ${n.risk_score.toFixed(2)}</span><span class="chip">confidence ${n.confidence.toFixed(2)}</span><span class="chip">→ ${n.recipients.join(", ")}</span></div>
+    </div>`)}</div></div>`;
+}
+
+function Incidents({data, go}) {
+  const incidents = data.nodes.filter(n=>n.label==="Incident");
+  return html`<div>
+    <div class="h1">Incident Explorer</div>
+    <div class="sub">Active incidents and their blast radius across the graph.</div>
+    <div class="list">${incidents.map(inc=>{ const affected=data.edges.filter(e=>e.from_id===inc.id).map(e=>data.nodes.find(n=>n.id===e.to_id));
+      return html`<div class="card" key=${inc.id}>
+        <div class="row between"><div class="row"><span class="sev" style=${{background:SEV[inc.severity]||"var(--accent)"}}></span><b>${inc.display}</b></div>
+          <span class="chip" style=${{color:SEV[inc.severity]}}>${inc.severity||""}</span></div>
+        <div class="row gap" style=${{marginTop:"8px",flexWrap:"wrap"}}>
+          <span class="tag">Affects:</span>${affected.map(a=>a&&html`<span class="chip clickable" key=${a.id} onClick=${()=>go("inspector",a.id)}>${a.display}</span>`)}</div>
+      </div>`; })}</div></div>`;
+}
+
+function Search({data, go, api}) {
+  const [q,setQ]=useState(""); const [hits,setHits]=useState([]);
+  async function run(query){ setQ(query);
+    const live = await api.req("/api/v1/search",{method:"POST",body:JSON.stringify({query})});
+    if (live) return setHits(live);
+    const t=query.toLowerCase();
+    setHits(query? data.nodes.filter(n=>n.display.toLowerCase().includes(t)||n.label.toLowerCase().includes(t)):[]);
+  }
+  return html`<div>
+    <div class="h1">Search</div>
+    <div class="sub">Hybrid graph + vector search across every connected source.</div>
+    <input autofocus placeholder="Search entities — try 'billing', 'incident', 'deploy'…" style=${{width:"100%",padding:"10px 14px",fontSize:"14px"}}
+      value=${q} onInput=${e=>run(e.target.value)} />
+    <div class="list" style=${{marginTop:"12px"}}>${hits.map(h=>html`<div class="item row between clickable" key=${h.id} onClick=${()=>go("inspector",h.id)}>
+      <span>${h.display}</span><${Label} t=${h.label}/></div>`)}
+      ${q&&!hits.length&&html`<div class="muted">No matches.</div>`}</div></div>`;
+}
+
+function EventStream({data}) {
+  const [n,setN]=useState(3);
+  useEffect(()=>{ if(n>=data.stream.length) return; const t=setTimeout(()=>setN(n+1),1200); return ()=>clearTimeout(t); },[n]);
+  const rows=[...data.stream].slice(0,n).reverse();
+  return html`<div>
+    <div class="h1"><span class="dotpulse"></span> Live Event Stream</div>
+    <div class="sub">Source events flowing through ingestion → entities → graph → risk → reasoning → notify.</div>
+    <div class="card" style=${{padding:0,overflow:"hidden"}}>
+      ${rows.map(e=>html`<div class="streamrow" key=${e.id}>
+        <span class="muted">${new Date(e.ts).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</span>
+        <span><span class="chip">${e.source}</span></span>
+        <span>${e.kind==="notification"?html`<b style=${{color:"var(--crit)"}}>${e.text}</b>`:e.text} <span class="muted">· ${e.kind}</span></span>
+      </div>`)}
+    </div>
+    ${n<data.stream.length && html`<div class="muted" style=${{marginTop:"8px"}}>streaming…</div>`}</div>`;
+}
+
+function Timeline({data, go}) {
+  const [i,setI]=useState(data.stream.length-1);
+  const shown=data.stream.slice(0,i+1);
+  return html`<div>
+    <div class="h1">Timeline Replay</div>
+    <div class="sub">Scrub the incident forward and watch the picture assemble across sources.</div>
+    <input class="scrub" type="range" min="0" max=${data.stream.length-1} value=${i} onInput=${e=>setI(+e.target.value)} />
+    <div class="row between" style=${{margin:"6px 0 14px"}}>
+      <span class="muted">${new Date(data.stream[0].ts).toLocaleTimeString()}</span>
+      <b>${new Date(data.stream[i].ts).toLocaleTimeString()} · ${data.stream[i].kind}</b>
+      <span class="muted">${new Date(data.stream[data.stream.length-1].ts).toLocaleTimeString()}</span>
+    </div>
+    <div class="list">${[...shown].reverse().map(e=>html`<div class="item row between" key=${e.id}>
+      <span><span class="chip">${e.source}</span> ${e.text}</span><span class="muted">${new Date(e.ts).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</span></div>`)}</div>
+  </div>`;
+}
+
+/* ---------------- app shell ---------------- */
+const NAV = [
+  ["OPERATE", [["dashboard","Risk Dashboard","▤"],["notifications","Notification Feed","◈"],["incidents","Incident Explorer","✸"],["stream","Live Event Stream","≋"]]],
+  ["EXPLORE", [["graph","Graph Explorer","⬡"],["inspector","Entity Inspector","◎"],["search","Search","⌕"],["timeline","Timeline Replay","⤳"]]],
+];
+
+function App() {
+  const api = useApi();
+  const [view, setView] = useState("dashboard");
+  const [focus, setFocus] = useState("nd_dep");
+  const [data, setData] = useState(DEMO);
+  const go = (v, id) => { if(id) setFocus(id); setView(v); };
+
+  useEffect(()=>{ (async()=>{
+    if(!api.live){ setData(DEMO); return; }
+    const [risks, notifs] = await Promise.all([api.req("/api/v1/risk/top?limit=20"), api.req("/api/v1/notifications")]);
+    if(risks){ // merge live risk/notifications over the demo graph shape
+      setData(d=>({...DEMO, risks: risks.map(r=>({id:r.id,label:r.label,display:r.display,urgency:r.urgency,features:r.features})),
+        notifications: notifs||DEMO.notifications}));
+    }
+  })(); }, [api.live]);
+
+  const V = {
+    dashboard: html`<${RiskDashboard} data=${data} go=${go}/>`,
+    graph: html`<${GraphExplorer} data=${data} go=${go}/>`,
+    inspector: html`<${EntityInspector} data=${data} id=${focus} go=${go}/>`,
+    notifications: html`<${Notifications} data=${data}/>`,
+    incidents: html`<${Incidents} data=${data} go=${go}/>`,
+    search: html`<${Search} data=${data} go=${go} api=${api}/>`,
+    stream: html`<${EventStream} data=${data}/>`,
+    timeline: html`<${Timeline} data=${data} go=${go}/>`,
+  };
+
+  return html`<div>
+    <div class="topbar">
+      <div class="brand">Cortex<span class="dot">.</span> <span class="muted" style=${{fontWeight:400,fontSize:"12px"}}>Context Graph Console</span></div>
+      <div class="grow"></div>
+      <span class="pill">${api.status}</span>
+      <input style=${{width:"220px"}} value=${api.base} onChange=${e=>api.setBase(e.target.value)} title="api-service base URL"/>
+      <button onClick=${()=>api.setLive(!api.live)}>${api.live?"● Live":"○ Demo"}</button>
+    </div>
+    <div class="main">
+      <div class="nav">
+        ${NAV.map(([grp,items])=>html`<div key=${grp}><div class="grp">${grp}</div>
+          ${items.map(([id,label,ic])=>html`<a key=${id} href="#" class=${view===id?"active":""} onClick=${e=>{e.preventDefault();setView(id);}}>
+            <span class="ic">${ic}</span>${label}</a>`)}</div>`)}
+        <div class="grow"></div>
+        <div class="tag" style=${{padding:"8px"}}>org: ${ORG}</div>
+      </div>
+      <div class="content">${V[view]}</div>
+    </div>
+  </div>`;
+}
+ReactDOM.createRoot(document.getElementById("root")).render(html`<${App}/>`);
+</script>
+</body>
+</html>

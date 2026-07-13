@@ -89,6 +89,15 @@ def create_base_app(
     app.state.service_name = service_name
     app.state.readiness = readiness_ref
 
+    # Permissive CORS so the browser dashboard (a static SPA on another origin) can call the
+    # API. Services are internal; tighten allow_origins in a hardened deployment.
+    from fastapi.middleware.cors import CORSMiddleware
+
+    app.add_middleware(
+        CORSMiddleware, allow_origins=["*"], allow_credentials=False,
+        allow_methods=["*"], allow_headers=["*"],
+    )
+
     METRICS.register(
         "cortex_http_requests_total", "counter", "HTTP requests handled, by route and status."
     )

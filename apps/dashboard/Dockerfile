@@ -1,18 +1,8 @@
-FROM node:20-slim AS deps
-WORKDIR /app
-COPY package.json ./
-RUN npm install
+# Cortex dashboard — a single-file static SPA served by nginx on :3000.
+# No build step: index.html loads React from a CDN and talks to api-service over REST.
+#   docker build -t cortex/dashboard apps/dashboard
 
-FROM node:20-slim AS build
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY . .
-RUN npm run build
-
-FROM node:20-slim AS run
-WORKDIR /app
-ENV NODE_ENV=production
-COPY --from=build /app/.next/standalone ./
-COPY --from=build /app/.next/static ./.next/static
+FROM nginx:1.27-alpine
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY index.html /usr/share/nginx/html/index.html
 EXPOSE 3000
-CMD ["node", "server.js"]
