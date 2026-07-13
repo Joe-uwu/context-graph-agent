@@ -29,7 +29,7 @@ def configure_tracing(service_name: str, endpoint: str | None) -> None:
     """
     if not endpoint:
         return
-    try:  # pragma: no cover - optional dependency
+    try:  # pragma: no cover - optional dependency / best-effort
         from opentelemetry import trace
         from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
         from opentelemetry.sdk.resources import Resource
@@ -39,8 +39,15 @@ def configure_tracing(service_name: str, endpoint: str | None) -> None:
         provider = TracerProvider(resource=Resource.create({"service.name": service_name}))
         provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint)))
         trace.set_tracer_provider(provider)
-    except ImportError:
-        pass
+    except Exception:  # noqa: BLE001
+        # Tracing is best-effort: a missing SDK, an unreachable/misconfigured collector, or
+        # an endpoint-parsing quirk must never crash the service on start-up. Span export
+        # failures at runtime are already handled inside the BatchSpanProcessor.
+        from cortex.platform.logging import get_logger
+
+        get_logger("cortex.observability").warning(
+            "tracing disabled (setup failed)", extra={"extra_fields": {"endpoint": endpoint}}
+        )
 
 
 def _key(labels: dict[str, str]) -> LabelKey:

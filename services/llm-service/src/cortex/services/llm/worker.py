@@ -7,7 +7,7 @@ from cortex.contracts.payloads import RiskScored
 from cortex.platform.bus import EventBus
 from cortex.platform.logging import get_logger
 from cortex.platform.observability import METRICS
-from cortex.services.llm.reasoning import Reasoner, TemplateReasoner
+from cortex.services.llm.reasoning import Reasoner
 from cortex.services.retrieval.service import RetrievalService
 
 log = get_logger("cortex.llm")
@@ -22,7 +22,11 @@ class LlmWorker:
     ) -> None:
         self._bus = bus
         self._retrieval = retrieval
-        self._reasoner = reasoner or TemplateReasoner()
+        if reasoner is None:
+            from cortex.services.llm.graph import GraphReasoner
+
+            reasoner = GraphReasoner()
+        self._reasoner = reasoner
         self._hops = evidence_hops
         bus.subscribe(Topic.RISK_SCORED, self.handle, group="llm-service")
 

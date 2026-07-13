@@ -9,8 +9,8 @@ from __future__ import annotations
 from cortex.platform.http import Readiness, serve
 from cortex.platform.runtime import build_bus, build_graph_repo
 from cortex.services.llm.config import GROUP, SERVICE_NAME, LlmSettings
+from cortex.services.llm.graph import GraphReasoner, ReasoningConfig
 from cortex.services.llm.http import create_app
-from cortex.services.llm.reasoning import TemplateReasoner
 from cortex.services.llm.worker import LlmWorker
 from cortex.services.retrieval.service import RetrievalService
 
@@ -20,7 +20,9 @@ def main() -> None:
     bus = build_bus(settings, client_id=GROUP)
     repo = build_graph_repo(settings)
     retrieval = RetrievalService(repo)
-    reasoner = TemplateReasoner()
+    reasoner = GraphReasoner(
+        ReasoningConfig(retrieval=retrieval, evidence_hops=settings.evidence_hops)
+    )
     LlmWorker(bus, retrieval, reasoner=reasoner, evidence_hops=settings.evidence_hops)
     readiness = Readiness()
     app = create_app(retrieval, reasoner, evidence_hops=settings.evidence_hops, readiness=readiness)

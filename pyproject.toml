@@ -52,6 +52,7 @@ packages = [
     "cortex.services.retrieval",
     "cortex.services.ranking",
     "cortex.services.llm",
+    "cortex.services.llm.graph",
     "cortex.services.notification",
     "cortex.services.api",
     "cortex.tools",
