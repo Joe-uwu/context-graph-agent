@@ -28,6 +28,10 @@ class ServiceSettings(BaseSettings):
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_user: str = "neo4j"
     neo4j_password: str = "password"
+    # How long a graph-backed service waits for Neo4j to become query-ready on start
+    # (attempts * delay seconds) before giving up. Covers container warmup in compose/k8s.
+    neo4j_connect_attempts: int = 30
+    neo4j_connect_delay: float = 2.0
     qdrant_url: str = "http://localhost:6333"
     redis_url: str = "redis://localhost:6379/0"
 

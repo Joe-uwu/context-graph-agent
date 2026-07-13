@@ -20,8 +20,13 @@ x-service-env: &service-env
   CORTEX_OTEL_ENDPOINT: http://otel-collector:4317
 
 x-service-deps: &service-deps
-  kafka: {condition: service_healthy}
-  neo4j: {condition: service_healthy}
+  # Services wait only for the backends to be *started*, not *healthy*. The Kafka producer
+  # connects lazily and the consumer loop tolerates a not-yet-ready broker (it polls and
+  # continues), and graph-backed services retry the Bolt connection themselves
+  # (build_graph_repo -> _wait_for_neo4j). So no service crash-loops during backend warmup,
+  # and none is blocked by a healthcheck's timing.
+  kafka: {condition: service_started}
+  neo4j: {condition: service_started}
   qdrant: {condition: service_started}
   redis: {condition: service_started}
 
@@ -46,14 +51,16 @@ services:
 
   neo4j:
     image: neo4j:5.20
+    # No APOC plugin: the adapter uses only core Cypher, and skipping the plugin download
+    # makes start-up faster and removes a network dependency.
     environment:
       NEO4J_AUTH: neo4j/password
-      NEO4J_PLUGINS: '["apoc"]'
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 || exit 1"]
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p password 'RETURN 1' || exit 1"]
       interval: 10s
       timeout: 10s
-      retries: 10
+      retries: 20
+      start_period: 30s
     ports: ["7474:7474", "7687:7687"]
 
   qdrant:
