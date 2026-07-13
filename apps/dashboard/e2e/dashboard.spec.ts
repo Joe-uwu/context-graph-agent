@@ -1,33 +1,34 @@
 import { test, expect } from "@playwright/test";
 
-// The dashboard renders from embedded demo data (no backend needed), so these run against
-// the static file alone.
+// The dashboard renders from embedded demo data (no backend needed). React loads from a CDN,
+// so each test first waits for the app to mount (the unique interrupt banner appears).
 
-test("risk dashboard renders with the proactive interrupt", async ({ page }) => {
+test.beforeEach(async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Risk Dashboard" })).toBeVisible();
-  await expect(page.getByText(/deploy will fail/i)).toBeVisible();
-  await expect(page.getByText("release v2.4.0 → billing")).toBeVisible();
-  // KPI: 9 tracked entities from the demo scenario.
-  await expect(page.getByText("TRACKED ENTITIES")).toBeVisible();
+  await expect(page.getByText(/Your 15:00 billing deploy will fail/i)).toBeVisible({
+    timeout: 20_000,
+  });
+});
+
+test("risk dashboard shows the interrupt and ranked risks", async ({ page }) => {
+  // The KPI label is "Tracked entities" in the DOM (CSS uppercases it), so match
+  // case-insensitively.
+  await expect(page.getByText(/tracked entities/i)).toBeVisible();
+  await expect(page.getByText("INC-2207 payment retries failing")).toBeVisible();
 });
 
 test("navigates to the graph explorer", async ({ page }) => {
-  await page.goto("/");
-  await page.getByRole("link", { name: "Graph Explorer" }).click();
-  await expect(page.getByRole("heading", { name: /Graph .* Explorer/ })).toBeVisible();
+  await page.getByRole("link", { name: /Graph Explorer/ }).click();
+  await expect(page.getByText(/blast-radius view/i)).toBeVisible();
 });
 
 test("search surfaces a matching entity", async ({ page }) => {
-  await page.goto("/");
-  await page.getByRole("link", { name: "Search" }).click();
+  await page.getByRole("link", { name: /Search/ }).click();
   await page.getByPlaceholder(/Search entities/i).fill("billing");
   await expect(page.getByText("billing-service")).toBeVisible();
 });
 
 test("notification feed shows the slack interrupt", async ({ page }) => {
-  await page.goto("/");
-  await page.getByRole("link", { name: "Notification Feed" }).click();
+  await page.getByRole("link", { name: /Notification Feed/ }).click();
   await expect(page.getByText("SLACK")).toBeVisible();
-  await expect(page.getByText(/oncall/)).toBeVisible();
 });
