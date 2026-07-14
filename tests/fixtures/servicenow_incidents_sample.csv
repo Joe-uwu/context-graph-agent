@@ -1,0 +1,11 @@
+number,incident_state,active,reassignment_count,reopen_count,sys_mod_count,made_sla,caller_id,opened_by,category,cmdb_ci,impact,urgency,priority,assignment_group,assigned_to,resolved_at,closed_at
+INC0000001,New,true,0,0,0,TRUE,Caller 1,Opened 1,Category 5,?,1 - High,1 - High,1 - Critical,Group 10,?,,
+INC0000001,Resolved,false,1,0,3,TRUE,Caller 1,Opened 1,Category 5,CI 22,1 - High,1 - High,1 - Critical,Group 10,Resolver 3,2016-01-02,2016-01-05
+INC0000002,New,true,0,0,0,TRUE,Caller 2,Opened 2,Category 8,CI 40,3 - Low,3 - Low,4 - Low,Group 11,?,,
+INC0000002,Closed,false,0,0,2,TRUE,Caller 2,Opened 2,Category 8,CI 40,3 - Low,3 - Low,4 - Low,Group 11,Resolver 4,2016-02-02,2016-02-03
+INC0000003,Closed,false,2,1,5,FALSE,Caller 3,Opened 3,Category 26,CI 7,2 - Medium,2 - Medium,3 - Moderate,Group 24,Resolver 9,2016-03-02,2016-03-03
+INC0000004,Closed,false,0,0,1,TRUE,Caller 4,Opened 4,Category 26,?,1 - High,2 - Medium,2 - High,Group 24,Resolver 1,2016-03-05,2016-03-06
+INC0000005,Closed,false,3,0,6,FALSE,Caller 5,Opened 5,Category 3,CI 88,1 - High,1 - High,1 - Critical,Group 5,Resolver 2,2016-03-08,2016-03-10
+INC0000006,Closed,false,0,0,1,TRUE,Caller 6,Opened 6,Category 12,CI 12,3 - Low,3 - Low,4 - Low,Group 5,Resolver 2,2016-03-11,2016-03-12
+INC0000007,Closed,false,1,0,4,TRUE,Caller 7,Opened 7,Category 9,CI 3,2 - Medium,3 - Low,3 - Moderate,Group 7,Resolver 6,2016-03-15,2016-03-16
+INC0000008,Closed,false,0,0,2,TRUE,Caller 8,Opened 8,Category 1,?,?,?,?,Group 7,Resolver 6,2016-03-18,2016-03-19

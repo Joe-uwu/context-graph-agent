@@ -17,6 +17,11 @@ from cortex.services.llm.graph.pipeline import (
     build_reasoner,
     build_reasoning_graph,
 )
+from cortex.services.llm.graph.langgraph_pipeline import (
+    LangGraphReasoner,
+    build_langgraph_app,
+    langgraph_available,
+)
 from cortex.services.llm.graph.state import Finding, ReasoningState
 
 __all__ = [
@@ -26,6 +31,9 @@ __all__ = [
     "GraphReasoner",
     "ReasoningConfig",
     "build_reasoner",
+    "LangGraphReasoner",
+    "build_langgraph_app",
+    "langgraph_available",
     "build_reasoning_graph",
     "ReasoningState",
     "Finding",

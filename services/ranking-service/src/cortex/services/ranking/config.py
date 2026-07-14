@@ -15,3 +15,7 @@ class RankingSettings(ServiceSettings):
     reason_at: float = 0.60
     # k-hop radius scored around each changed node.
     hops: int = 2
+
+    # Urgency scorer: "heuristic" (transparent weighted model, default) or "gnn"
+    # (trained message-passing GNN behind the same port; needs the "gnn" extra for numpy).
+    scorer_model: str = "heuristic"

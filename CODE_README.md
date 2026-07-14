@@ -94,14 +94,21 @@ boundary also has a real implementation behind the same port, switched on by con
   (`CORTEX_EMBEDDING_PROVIDER=openai`); the offline `HashingEmbedder` is the default.
 - Reasoner: the reasoning graph's Reason node calls any OpenAI-compatible chat endpoint
   (`CORTEX_LLM_PROVIDER=openai`), with the grounding validator gating every citation and a
-  deterministic template as the fallback when no LLM is configured or a call fails.
+  deterministic template as the fallback when no LLM is configured or a call fails. The nine
+  nodes run on a hand-rolled typed-state engine by default or, with
+  `CORTEX_REASONER_ENGINE=langgraph`, compile onto the real LangGraph runtime unchanged.
+- Urgency scorer: a trained message-passing GNN (`CORTEX_SCORER_MODEL=gnn`) scores each
+  changed subgraph — the model and its NumPy forward/backprop live in `services/ranking/gnn/`.
+  It trains either on the real UCI ServiceNow incident event log (24,918 incidents with real
+  impact/urgency/priority labels; see `gnn/README.md`) or on a synthetic generator for
+  reproducibility without the dataset. The transparent weighted heuristic is the default and the
+  fallback when weights or NumPy are absent.
 
 Real and exercised end to end on the offline defaults: the event envelope and contracts, the
 in-memory bus with retry/DLQ, deterministic entity extraction, entity resolution and
-idempotent graph writes with provenance/temporal edges, k-hop traversal, the weighted urgency
-scorer, hybrid retrieval (graph + keyword + vector arms), grounded reasoning with the citation
+idempotent graph writes with provenance/temporal edges, k-hop traversal, urgency scoring,
+hybrid retrieval (graph + keyword + vector arms), grounded reasoning with the citation
 validator, and notification bundling/routing.
 
 Swap-in-by-config for infra, with the in-memory default satisfying the same port: the Kafka
-bus, the Neo4j and Qdrant adapters, and the GNN scorer. See the ADRs for why each boundary
-sits where it does.
+bus and the Neo4j and Qdrant adapters. See the ADRs for why each boundary sits where it does.

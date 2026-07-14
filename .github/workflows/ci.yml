@@ -16,7 +16,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install workspace
-        run: pip install -e ".[dev,api,github]"
+        run: pip install -e ".[dev,api,github,openai,langgraph,gnn]"
       - name: Tests (unit + integration + e2e)
         run: pytest -q
       # Lint/format/type are advisory until a repo-wide formatting pass lands; they run so

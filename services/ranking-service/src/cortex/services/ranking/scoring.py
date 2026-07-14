@@ -14,6 +14,9 @@ from datetime import datetime, timezone
 
 from cortex.contracts.enums import EdgeType, NodeLabel
 from cortex.graph_sdk.models import Edge, Node
+from cortex.platform.logging import get_logger
+
+log = get_logger("cortex.ranking")
 
 _SEVERITY = {"SEV1": 1.0, "SEV2": 0.7, "SEV3": 0.4, "SEV4": 0.2}
 _CRITICALITY = {"tier0": 1.0, "tier1": 0.75, "tier2": 0.5, "tier3": 0.25}
@@ -163,3 +166,22 @@ def _age_frac(opened_at: object, *, cap_h: float) -> float:
     if when.tzinfo is None:
         when = when.replace(tzinfo=timezone.utc)
     return min(_hours_since(when) / cap_h, 1.0)
+
+
+def build_scorer(settings=None):
+    """Select the urgency scorer. "gnn" loads the trained message-passing GNN (numpy) behind
+    the same port; anything else — or missing/again bad weights — uses the heuristic model."""
+    kind = getattr(settings, "scorer_model", "heuristic") if settings is not None else "heuristic"
+    if kind == "gnn":
+        try:
+            from cortex.services.ranking.gnn.scorer import load_default_gnn_scorer
+
+            gnn = load_default_gnn_scorer()
+            if gnn is not None:
+                log.info("urgency scorer: gnn")
+                return gnn
+        except Exception as exc:  # noqa: BLE001 - numpy/weights problem -> heuristic
+            log.warning("gnn scorer unavailable, using heuristic",
+                        extra={"extra_fields": {"error": str(exc)}})
+        log.warning("gnn weights unavailable, using heuristic scorer")
+    return UrgencyScorer()

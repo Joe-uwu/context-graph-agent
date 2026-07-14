@@ -10,7 +10,7 @@ COPY pyproject.toml README.md CODE_README.md ./
 COPY packages ./packages
 COPY services ./services
 COPY tools ./tools
-RUN pip install ".[api,kafka,neo4j,qdrant,otel,openai]"
+RUN pip install ".[api,kafka,neo4j,qdrant,otel,openai,langgraph]"
 
 FROM python:3.12-slim AS runtime
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PATH="/opt/venv/bin:$PATH" \

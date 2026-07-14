@@ -7,6 +7,11 @@ Distributed execution uses Ray in production (ADR-0011); the reference build sco
 in-process.
 """
 
-from cortex.services.ranking.scoring import ScoreResult, UrgencyScorer, default_weights
+from cortex.services.ranking.scoring import (
+    ScoreResult,
+    UrgencyScorer,
+    build_scorer,
+    default_weights,
+)
 
-__all__ = ["ScoreResult", "UrgencyScorer", "default_weights"]
+__all__ = ["ScoreResult", "UrgencyScorer", "build_scorer", "default_weights"]

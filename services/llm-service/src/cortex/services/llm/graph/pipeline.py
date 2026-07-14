@@ -15,10 +15,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from cortex.contracts.payloads import ReasoningProduced
+from cortex.platform.logging import get_logger
 from cortex.services.llm.graph import nodes as N
 from cortex.services.llm.graph.engine import END, StateGraph
 from cortex.services.llm.graph.state import ReasoningState
 from cortex.services.retrieval.service import EvidenceSet, RetrievalService
+
+log = get_logger("cortex.llm.graph")
 
 
 @dataclass
@@ -98,7 +101,7 @@ class GraphReasoner:
         return self._graph.run(state, self._config)
 
 
-def build_reasoner(settings, *, retrieval: RetrievalService | None = None) -> GraphReasoner:
+def build_reasoner(settings, *, retrieval: RetrievalService | None = None):
     """Build the graph reasoner from settings. ``llm_provider == "openai"`` plugs a real
     OpenAI-compatible model into the Reason node; otherwise the deterministic template runs."""
     llm = None
@@ -110,8 +113,20 @@ def build_reasoner(settings, *, retrieval: RetrievalService | None = None) -> Gr
             api_key=getattr(settings, "llm_api_key", ""),
             base_url=getattr(settings, "llm_base_url", "https://api.openai.com/v1"),
         )
-    return GraphReasoner(ReasoningConfig(
+    config = ReasoningConfig(
         retrieval=retrieval,
         evidence_hops=getattr(settings, "evidence_hops", 3),
         llm=llm,
-    ))
+    )
+    engine = getattr(settings, "reasoner_engine", "native")
+    if engine == "langgraph":
+        from cortex.services.llm.graph.langgraph_pipeline import (
+            LangGraphReasoner,
+            langgraph_available,
+        )
+        if langgraph_available():
+            log.info("reasoner engine: langgraph")
+            return LangGraphReasoner(config)
+        log.warning("reasoner_engine=langgraph but langgraph is not installed; "
+                    "falling back to the native engine")
+    return GraphReasoner(config)

@@ -14,6 +14,10 @@ class LlmSettings(ServiceSettings):
     # k-hop radius of evidence gathered before reasoning.
     evidence_hops: int = 3
 
+    # Reasoning engine: "native" (hand-rolled typed state graph, default) or "langgraph"
+    # (the same nine nodes compiled on the langgraph library). Both use the same LLM plug-in.
+    reasoner_engine: str = "native"
+
     # Reasoner: "template" (offline default) or "openai" (any OpenAI-compatible chat endpoint —
     # OpenAI, Azure, Ollama, vLLM). The grounding validator gates the output either way.
     llm_provider: str = "template"

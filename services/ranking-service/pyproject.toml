@@ -13,6 +13,8 @@ cortex-ranking-service = "cortex.services.ranking.main:main"
 
 [project.optional-dependencies]
 ray = ["ray>=2.10"]
+# Trained message-passing GNN urgency scorer (CORTEX_SCORER_MODEL=gnn).
+gnn = ["numpy>=1.26"]
 
 [build-system]
 requires = ["setuptools>=68"]
@@ -20,3 +22,6 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"cortex.services.ranking" = ["assets/*.npz"]
