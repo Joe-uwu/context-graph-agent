@@ -52,13 +52,13 @@ Arm weights default to graph 0.45, vector 0.35, keyword 0.20 and are per-org tun
 - **Subgraph** — a serialized k-hop neighborhood. For "give me the context around X."
 - **Document** — chunked Notion pages, Slack threads, PR descriptions. For content search.
 
-Embedding generation runs on Modal GPU workers (batched) with a hosted-API fallback for local dev. Vectors are versioned by model id so a model upgrade re-embeds lazily rather than invalidating everything at once.
+Embedding generation calls any OpenAI-compatible `/v1/embeddings` endpoint (`CORTEX_EMBEDDING_PROVIDER=openai`), with a dependency-free hashing embedder as the offline default so the arm runs with no key. An in-memory index backs the default runtime and Qdrant backs production. Vectors are versioned by model id so a model upgrade re-embeds lazily rather than invalidating everything at once.
 
 ---
 
 ## Caching
 
-Result sets are cached in Redis keyed by a hash of `(org_id, query, anchor, filters, arm_weights)` with a short TTL, since the underlying graph changes. Embeddings are cached by content hash (identical text embeds once). LLM-facing retrieval and dashboard search share the cache, so a question the reasoning layer already asked is free when a user asks it too.
+Result sets can be cached (keyed by a hash of `(org_id, query, anchor, filters, arm_weights)`) with a short TTL, since the underlying graph changes; the Redis-backed cache is a scaling target. Embeddings are cached in-process by content hash (identical text embeds once). LLM-facing retrieval and dashboard search share the cache, so a question the reasoning layer already asked is free when a user asks it too.
 
 ---
 

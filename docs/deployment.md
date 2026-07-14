@@ -1,5 +1,7 @@
 # Deployment
 
+> **Built vs. target.** This document describes the target deployment. The current build ships a Helm chart (`infra/helm/`) for the eight services + dashboard + infra, runs locally via Docker Compose or fully in-process (the in-memory runtime), and uses hosted OpenAI-compatible APIs for embedding/inference. Ray clusters, Celery workers, Modal GPU workers, and managed Postgres for cursors are scaling targets, not part of the current build.
+
 Three environments, one topology, increasing scale: local (Docker Compose), staging/production (Kubernetes), with cloud infra defined in Terraform. The service boundaries are identical across all three; only the backing-store deployment and replica counts change.
 
 ## Local — Docker Compose

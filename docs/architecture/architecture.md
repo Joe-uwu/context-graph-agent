@@ -4,6 +4,8 @@ Cortex is an event-driven system of independently deployable services joined by 
 
 This document uses the C4 model: system context, then containers, then a component view of the two most involved services. Diagrams are Mermaid.
 
+> **Built vs. target.** These diagrams show the target production topology. What is implemented today: all eight services + the dashboard, the in-memory and Kafka/Neo4j/Qdrant runtimes, six real connectors, the LangGraph reasoning runtime with an OpenAI-compatible LLM, an OpenAI-compatible neural embedder, and a trained NumPy GNN urgency scorer — each behind a port with an offline default. Shown here but not yet wired (scaling targets): Ray-distributed ranking, Celery-scheduled syncs, Modal GPU workers, and Postgres cursor persistence. The current build runs ranking and embedding in-process or against hosted OpenAI-compatible APIs; see [`CODE_README.md`](../../CODE_README.md).
+
 ---
 
 ## C4 Level 1 — System context
@@ -141,8 +143,8 @@ graph TB
     debounce[Debounce + coalesce<br/>changed-node set]
     subg[Subgraph extractor<br/>k-hop neighborhood]
     driver[Ray driver]
-    workers[Ray urgency workers<br/>feature calc + weighted score]
-    gnn[Optional GNN scorer<br/>Modal GPU]
+    workers[urgency workers<br/>weighted model or trained GNN]
+    gnn[GNN scorer<br/>NumPy, in-process]
     emit[Producer<br/>risk.scored]
     store[(Neo4j: write risk<br/>back to nodes)]
 

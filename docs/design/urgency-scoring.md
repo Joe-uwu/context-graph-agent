@@ -2,7 +2,7 @@
 
 The scorer answers one question per node: how likely is this to need a human's attention soon, and how bad if it does. It runs continuously in the background over changed subgraphs, not on demand, so a high score exists before anyone asks. Output is a score in [0, 1], the feature vector that produced it, and a confidence derived from the provenance of the underlying edges.
 
-The design is deliberately a transparent weighted model first, with an optional learned (GNN) scorer layered on top later. A weighted model is explainable by construction — the notification can say which features drove the score — and needs no labeled training data to start. The learned scorer is an enhancement, not a dependency (see the end of this doc and [ADR-0010](../adr/0010-gnn-urgency-scorer.md)).
+Two scorers ship behind the same port. The default is a transparent weighted model — explainable by construction (the notification can say which features drove the score) and needing no training data. A trained graph neural network is the alternative (`CORTEX_SCORER_MODEL=gnn`), selected by config; it captures relational interactions the additive model misses. See the learned-scorer section below and [ADR-0010](../adr/0010-gnn-urgency-scorer.md).
 
 ---
 
@@ -109,10 +109,10 @@ Scoring is a Ray job triggered by `graph.changes`. It never scans the whole grap
 4. Write the score back onto the node (`urgency`, `urgency_features`, `scored_at`).
 5. For nodes crossing `reason_at`, emit `risk.scored` to trigger the LLM stage.
 
-Cost is proportional to churn, not to graph size, so freshness holds as the graph grows past 100k nodes. Re-scoring the same node within a short window is cached in Redis keyed by the subgraph's content hash, so a node touched repeatedly in a burst is scored once.
+Cost is proportional to churn, not to graph size, so freshness holds as the graph grows past 100k nodes. Re-scoring the same node within a short window can be cached (keyed by the subgraph's content hash) so a node touched repeatedly in a burst is scored once; the current build scores in-process and the Redis-backed cache is a scaling target.
 
 ---
 
-## Optional learned scorer
+## Learned scorer (trained GNN)
 
-The weighted model is the default and the fallback. A graph neural network (GraphSAGE-style, on the k-hop subgraph) can be trained later on outcome labels — did this node actually lead to a page, a rollback, a missed deadline — to predict urgency directly, capturing feature interactions the linear model misses. It runs as a Modal GPU worker and returns a score plus attention weights that map back to nodes for explainability. It is gated behind a config flag and only used where a trained model exists for the org; everywhere else the weighted model runs. Trade-offs and the labeling scheme are in [ADR-0010](../adr/0010-gnn-urgency-scorer.md). Nothing in the pipeline depends on it being present.
+The weighted model is the default and the fallback. The alternative is a 2-layer message-passing GNN over the k-hop subgraph (GCN-style propagation, scalar urgency readout on the anchor), implemented in NumPy with a hand-derived forward pass and backprop — no deep-learning framework or GPU. Message passing lets the anchor aggregate signals that live on its neighbors (an incident's severity, a deployment's proximity), which the additive per-node model cannot. It ships pre-trained on the UCI ServiceNow incident event log (24,918 real incidents; held-out Pearson ~0.91 against the real priority label) and can be retrained on a synthetic generator or an org's own outcome labels via `python -m cortex.services.ranking.gnn.train`. Selected with `CORTEX_SCORER_MODEL=gnn`; when off, or when weights/NumPy are absent, the weighted model runs. Details in [ADR-0010](../adr/0010-gnn-urgency-scorer.md) and `services/ranking/gnn/README.md`. Nothing in the pipeline depends on it being present.

@@ -1,6 +1,6 @@
 # 0003 — Connector framework with real + mock twins
 
-Status: Accepted
+Status: Accepted (implemented)
 
 ## Context
 
@@ -8,7 +8,9 @@ Six sources (GitHub, Slack, Jira, Notion, Calendar, PagerDuty), each with its ow
 
 ## Decision
 
-Define one connector interface — `initial_sync`, `incremental_sync`, `stream`, plus `normalize` — with shared machinery for pagination, rate limiting (Redis token bucket), retry (exponential backoff + jitter), deduplication (by source delivery id), and cursor persistence (Postgres). Every source ships two implementations behind that interface: a real connector and a mock connector backed by a synthetic event generator that produces realistic, cross-source-consistent event streams (the same incident referenced in Slack, Jira, and PagerDuty). Which one runs is configuration.
+Define one connector interface — `initial_sync`, `incremental_sync`, `stream`, plus `normalize` — with shared machinery for pagination, rate limiting (token bucket), retry (exponential backoff + jitter), and deduplication (by source delivery id). Every source ships two implementations behind that interface: a real connector and a mock connector backed by a synthetic event generator that produces realistic, cross-source-consistent event streams (the same incident referenced in Slack, Jira, and PagerDuty). Which one runs is configuration — each real connector's factory returns nothing when its `CORTEX_<SOURCE>_*` credentials are absent, so the mock twin registers instead and the service stays up.
+
+All six real connectors are implemented (GitHub, Slack, Jira, Notion, Google Calendar, PagerDuty), each making authenticated API calls with the source's real pagination (cursor, offset, page-token), retry/backoff, and rate-limit handling. Auth spans PAT / OAuth authorization-code-with-refresh / GitHub App installation JWT, Slack bot token, Jira Basic auth, Notion integration secret, Google OAuth refresh-token exchange, and PagerDuty token; GitHub adds an HMAC-verified webhook receiver. The in-process token-bucket limiter and on-start / on-demand sync are the current build; a Redis-backed shared limiter, Postgres cursor persistence, and Celery-scheduled incremental syncs remain scaling targets.
 
 ## Consequences
 

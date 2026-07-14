@@ -8,7 +8,7 @@ The target output is a notification like:
 
 Nobody wrote that rule. Cortex derived it from the graph.
 
-> **Status:** Design phase. This repository currently contains the architecture and system design (`/docs`). No runtime code has been written yet; the folder blueprint in [`docs/architecture/folder-structure.md`](docs/architecture/folder-structure.md) describes what the implementation will fill in. See [ADR-0001](docs/adr/0001-record-architecture-decisions.md) for how decisions are tracked.
+> **Status:** Implemented and tested. All eight services plus the dashboard run end to end — in-process with no external infrastructure (the default in-memory runtime) or against Kafka / Neo4j / Qdrant (the production runtime). CI runs unit, contract, integration (Neo4j, Qdrant, Kafka), and Playwright end-to-end jobs. See [ADR-0001](docs/adr/0001-record-architecture-decisions.md) for how decisions are tracked.
 
 ---
 
@@ -43,7 +43,7 @@ Relationship discovery ──▶ Graph writes (Neo4j)  ──▶ graph.changes (
         ▼                                              │
 Node/subgraph embeddings (Qdrant)  ◀──────────────────┘
         ▼
-Background ranking workers (Ray): urgency scoring over changed subgraph
+Background ranking workers: urgency scoring (trained GNN or weighted heuristic) over the changed subgraph
         ▼
 LLM reasoning (LangGraph): grounded explanation + recommended action + citations
         ▼
@@ -64,7 +64,7 @@ Every stage communicates over Kafka. Each box is an independently deployable ser
 | `entity-service` | Normalize events into typed entities (deterministic + LLM) | `raw.events` | `entities.extracted` |
 | `graph-service` | Owns Neo4j: entity merge, relationship discovery, versioning, provenance | `entities.extracted` | Neo4j, `graph.changes` |
 | `retrieval-service` | Hybrid retrieval: graph traversal + vector + keyword + filters; owns embeddings | Neo4j, Qdrant | Qdrant |
-| `ranking-service` | Background urgency scoring over changed subgraphs (Ray workers) | `graph.changes`, Neo4j | `risk.scored` |
+| `ranking-service` | Background urgency scoring over changed subgraphs (trained GNN or weighted heuristic) | `graph.changes`, Neo4j | `risk.scored` |
 | `llm-service` | LangGraph reasoning: grounded explanation, recommendation, citations | `risk.scored`, retrieval | `reasoning.produced` |
 | `notification-service` | Rank, bundle, dedupe, route notifications; digests | `reasoning.produced` | channels, `notifications.sent` |
 | `api-service` | Public REST + WebSocket gateway, auth, org isolation | all stores | — |
@@ -76,11 +76,11 @@ The per-service contract (endpoints, consumed/produced topics, data owned) is in
 
 ## Stack
 
-Backend: Python 3.12, FastAPI, LangGraph, Pydantic v2, SQLAlchemy (relational metadata), Neo4j (graph), Qdrant (vectors), Redis (cache + rate limits), Kafka (event bus), Ray (distributed ranking), Celery (scheduled connector syncs), PyTorch (embeddings / optional GNN scorer).
+Backend: Python 3.12, FastAPI, Pydantic v2, Neo4j (graph), Qdrant (vectors), Kafka (event bus). Reasoning runs on the LangGraph runtime (the nine-node graph) with any OpenAI-compatible chat model at the Reason node; the vector arm uses any OpenAI-compatible embedding model; the urgency scorer is a message-passing GNN implemented in NumPy, trained on the UCI ServiceNow incident event log. Redis (rate limits), Ray (distributed ranking), and Celery (scheduled syncs) are design targets — the current build runs ranking in-process and drives incremental sync on start and on demand.
 
 Frontend: Next.js, TypeScript, Tailwind, shadcn/ui, React Query, React Flow + Cytoscape (graph), Recharts (analytics), Framer Motion.
 
-Platform: Docker Compose for local, Kubernetes-ready manifests, GitHub Actions CI, Terraform-ready layout, Modal for GPU embedding/inference workers.
+Platform: Docker Compose for local, a Helm chart for Kubernetes, GitHub Actions CI. Embedding and inference use hosted OpenAI-compatible APIs, so no GPU workers are required.
 
 Observability: OpenTelemetry tracing, Prometheus metrics, Grafana dashboards, structured JSON logging. See [ADR-0009](docs/adr/0009-observability.md).
 
@@ -120,33 +120,6 @@ context-graph-agent/
 
 ---
 
-## Status
+## Scope of this phase
 
-The platform is built and running end to end: eight independently deployable services, the
-GitHub connector (OAuth / App / PAT, webhooks, pagination, rate limiting), a real Neo4j graph
-(temporal, versioned, provenance), Qdrant hybrid retrieval, a typed LangGraph-style reasoning
-pipeline, a single-file dashboard, full observability (Prometheus/Grafana/OTel), a Kubernetes
-Helm chart, and a CI matrix that gates all of it. Real integrations ship alongside a mock twin
-+ synthetic generator, so the whole pipeline runs with no credentials (see
-[ADR-0003](docs/adr/0003-connector-framework.md)) and switches to real credentials without
-architectural change.
-
-## Run it
-
-```bash
-pip install -e ".[dev,api,github]" && pytest -q     # tests
-cortex-demo                                          # the deploy-will-fail scenario, end to end
-make up                                              # full stack: API :8000, dashboard :3000, Grafana :3001
-```
-
-## Docs & governance
-
-- Architecture: [`docs/architecture/architecture.md`](docs/architecture/architecture.md) (C4),
-  [`sequence-diagrams.md`](docs/architecture/sequence-diagrams.md), [`docs/adr/`](docs/adr/)
-- Operate: [`docs/observability.md`](docs/observability.md), [`docs/runbooks.md`](docs/runbooks.md),
-  [`docs/troubleshooting.md`](docs/troubleshooting.md)
-- Deploy: [`deploy/README.md`](deploy/README.md) (Compose → Helm → release)
-- Quality & security: [`docs/testing.md`](docs/testing.md), [`docs/threat-model.md`](docs/threat-model.md),
-  [`SECURITY.md`](SECURITY.md), [`CONTRIBUTING.md`](CONTRIBUTING.md), [`LICENSE`](LICENSE)
-- API: [`docs/api/openapi/`](docs/api/openapi/), [`docs/api/cortex.postman_collection.json`](docs/api/cortex.postman_collection.json)
-
+All eight services and the dashboard are implemented and covered by CI. Every source ships a real connector (GitHub, Slack, Jira, Notion, Google Calendar, PagerDuty) plus a synthetic mock twin behind the same interface, so the platform runs end to end with no live accounts and switches to real credentials by configuration (see [ADR-0003](docs/adr/0003-connector-framework.md)). The reasoning graph runs on LangGraph, the embedder and reasoner call OpenAI-compatible endpoints, and the urgency scorer is a trained GNN — each behind a port with an offline default so nothing is required to run the pipeline. Distributed execution (Ray), scheduled syncs (Celery), and Postgres cursor persistence remain design targets; the current build runs the pipeline in-process or over Kafka. What is real vs. optional is detailed in [`CODE_README.md`](CODE_README.md).

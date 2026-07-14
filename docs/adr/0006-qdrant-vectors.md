@@ -8,7 +8,7 @@ Hybrid retrieval needs an approximate-nearest-neighbor arm over embeddings of no
 
 ## Decision
 
-Use Qdrant as the vector store. Store three embedding scopes (node, subgraph, document) keyed by node id with `org_id` and metadata in the payload for filtered search. Version vectors by embedding-model id so a model upgrade re-embeds lazily. Only `retrieval-service` writes it.
+Use Qdrant as the vector store. Store three embedding scopes (node, subgraph, document) keyed by node id with `org_id` and metadata in the payload for filtered search. Version vectors by embedding-model id so a model upgrade re-embeds lazily. Only `retrieval-service` writes it. Embeddings come from any OpenAI-compatible `/v1/embeddings` endpoint (`CORTEX_EMBEDDING_PROVIDER=openai`, dimensionality inferred from the model), with a dependency-free hashing embedder as the offline default so the vector arm runs with no key; an in-memory index backs the default runtime and Qdrant backs production.
 
 ## Consequences
 

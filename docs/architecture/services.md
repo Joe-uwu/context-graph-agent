@@ -8,7 +8,7 @@ Nine deployable units. Each has a single responsibility, owns at most one datast
 | entity-service | `raw.events` | `entities.extracted` | — | extraction backlog |
 | graph-service | `entities.extracted`, `user.actions` | `graph.changes` | Neo4j | write rate |
 | retrieval-service | `graph.changes` | (serves queries) | Qdrant | query + embed load |
-| ranking-service | `graph.changes` | `risk.scored` | — (Ray) | change churn |
+| ranking-service | `graph.changes` | `risk.scored` | — | change churn |
 | llm-service | `risk.scored` | `reasoning.produced` | — | reasoning backlog |
 | notification-service | `reasoning.produced`, `user.actions` | `notifications.sent` | notif store (PG) | alert volume |
 | api-service | (all stores, WS bridge) | `user.actions` | — | request rate |
@@ -18,7 +18,7 @@ Nine deployable units. Each has a single responsibility, owns at most one datast
 
 ## ingestion-service
 
-The connector runtime. One connector per source, all implementing a common interface (see [ADR-0003](../adr/0003-connector-framework.md)): `initial_sync`, `incremental_sync`, `stream` (webhook/socket), with shared machinery for pagination, rate limiting (token bucket in Redis), retry with exponential backoff and jitter, and deduplication by source delivery id. Sync cursors persist in Postgres so a restart resumes rather than refetches. Celery beat schedules incremental syncs for sources without push. Output is normalized into the common event envelope and produced to `raw.events`. Every source ships a real connector and a mock/synthetic-generator twin behind the same interface so the platform runs end-to-end without live accounts.
+The connector runtime. One connector per source, all implementing a common interface (see [ADR-0003](../adr/0003-connector-framework.md)): `initial_sync`, `incremental_sync`, `stream` (webhook/socket), with shared machinery for pagination, rate limiting (token bucket), retry with exponential backoff and jitter, and deduplication by source delivery id. Output is normalized into the common event envelope and produced to `raw.events`. All six real connectors are implemented (GitHub, Slack, Jira, Notion, Google Calendar, PagerDuty) with the source's real auth and pagination; each also ships a synthetic mock twin behind the same interface, and the real connector registers only when its credentials are set, so the platform runs end-to-end without live accounts. Cursor persistence in Postgres and Celery-scheduled syncs are scaling targets; the current build runs initial sync on start and incremental sync on demand.
 
 ## entity-service
 
@@ -34,11 +34,11 @@ Owns embeddings and hybrid retrieval. On `graph.changes` it re-embeds affected n
 
 ## ranking-service
 
-Background urgency scoring on Ray. Consumes `graph.changes`, debounces bursts, extracts k-hop subgraphs around changed nodes, fans scoring across Ray workers, writes scores back to Neo4j, and emits `risk.scored` for nodes crossing the reasoning threshold. Cost scales with churn, not graph size. Optional GNN scorer on Modal. Detail in [`docs/design/urgency-scoring.md`](../design/urgency-scoring.md).
+Background urgency scoring. Consumes `graph.changes`, debounces bursts, extracts k-hop subgraphs around changed nodes, scores them, writes scores back to Neo4j, and emits `risk.scored` for nodes crossing the reasoning threshold. Cost scales with churn, not graph size. Two scorers behind one port: a transparent weighted model (default) and a trained message-passing GNN (`CORTEX_SCORER_MODEL=gnn`, NumPy, shipped pre-trained on the UCI ServiceNow incident log). Distributed execution on Ray is a scaling target; the current build scores in-process. Detail in [`docs/design/urgency-scoring.md`](../design/urgency-scoring.md).
 
 ## llm-service
 
-LangGraph reasoning. Consumes `risk.scored`, gathers evidence via `retrieval-service`, and runs a state machine: summarize evidence → draft explanation → recommend actions → validate grounding. The grounding validator drops any claim not backed by a citation id before emitting `reasoning.produced` (explanation, actions, citations, confidence). Confidence is inherited from the evidence, not the model's self-assessment. Detail in [ADR-0007](../adr/0007-grounded-llm-reasoning.md).
+LangGraph reasoning. Consumes `risk.scored`, gathers evidence via `retrieval-service`, and runs the nine-node state machine (Observe → Retrieve → Verify → GraphTraverse → Reason → Ground → Explain → Recommend → Notify) on either a native typed-state engine or the real LangGraph runtime (`CORTEX_REASONER_ENGINE=langgraph`). The Reason node uses any OpenAI-compatible chat model (`CORTEX_LLM_PROVIDER=openai`) with a deterministic template fallback. The grounding validator drops any claim not backed by a citation id before emitting `reasoning.produced` (explanation, actions, citations, confidence). Confidence is inherited from the evidence, not the model's self-assessment. Detail in [ADR-0007](../adr/0007-grounded-llm-reasoning.md).
 
 ## notification-service
 
